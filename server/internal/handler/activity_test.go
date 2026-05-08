@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // fetchTimeline issues a GET /timeline request with the given query string and
@@ -338,6 +340,44 @@ func TestListTimeline_LegacyShapeForPreCursorClients(t *testing.T) {
 	}
 }
 
+// TestTimelineCursor_RoundTrip pins the dual-pool cursor format. Cursors carry
+// independent comment and activity positions (#1857 follow-up) so future
+// pages walk each pool past its own boundary instead of skipping rows when
+// one pool's oldest is older than the other's.
+func TestTimelineCursor_RoundTrip(t *testing.T) {
+	cT := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	aT := time.Date(2026, 5, 1, 11, 0, 0, 0, time.UTC)
+	cID, _ := parseUUIDStrict("11111111-1111-1111-1111-111111111111")
+	aID, _ := parseUUIDStrict("22222222-2222-2222-2222-222222222222")
+
+	in := struct {
+		comment, activity cursorPos
+	}{
+		comment:  cursorPos{T: pgtype.Timestamptz{Time: cT, Valid: true}, ID: cID},
+		activity: cursorPos{T: pgtype.Timestamptz{Time: aT, Valid: true}, ID: aID},
+	}
+
+	encoded := encodeTimelineCursor(in.comment, in.activity)
+	gotC, gotA, err := decodeTimelineCursor(encoded)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !gotC.T.Time.Equal(cT) || !gotA.T.Time.Equal(aT) {
+		t.Fatalf("timestamps did not round-trip: comment=%s activity=%s", gotC.T.Time, gotA.T.Time)
+	}
+	if uuidToString(gotC.ID) != "11111111-1111-1111-1111-111111111111" {
+		t.Fatalf("comment id did not round-trip: %s", uuidToString(gotC.ID))
+	}
+	if uuidToString(gotA.ID) != "22222222-2222-2222-2222-222222222222" {
+		t.Fatalf("activity id did not round-trip: %s", uuidToString(gotA.ID))
+	}
+
+	// Garbage cursor → error, never panics.
+	if _, _, err := decodeTimelineCursor("not-base64"); err == nil {
+		t.Fatalf("expected decode error for garbage input")
+	}
+}
+
 // TestHasMoreCommentsBeyond pins the truth table for the page-boundary helper.
 // Activities deliberately don't appear: #1857 reverted them from being a
 // pagination signal. Only the comment count and limit decide whether more
@@ -361,6 +401,87 @@ func TestHasMoreCommentsBeyond(t *testing.T) {
 					tc.comments, tc.limit, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestListTimeline_PerPoolCursorWalksAllComments reproduces the GPT-Boy
+// blocker on PR #2253: when activities sit older than every fetched comment,
+// a single shared cursor anchored on the merged-page boundary points at the
+// oldest activity, and the next "show older" call's `ListCommentsBefore` hits
+// activity time → skips every unreturned comment in between. The dual-pool
+// cursor walks each pool independently so the full comment list stays
+// reachable.
+func TestListTimeline_PerPoolCursorWalksAllComments(t *testing.T) {
+	issueID := createIssueForTimeline(t, "GPT-Boy per-pool cursor regression")
+	ctx := context.Background()
+
+	// Seed 30 activities in the older block, then 80 comments strictly newer
+	// than every activity. seedTimelineEntries inserts comments first then
+	// activities, which is the wrong order for this scenario, so seed manually.
+	const activityN, commentN = 30, 80
+	base := time.Now().UTC().Add(-time.Duration(activityN+commentN) * time.Minute)
+
+	for i := 0; i < activityN; i++ {
+		ts := base.Add(time.Duration(i) * time.Minute)
+		if _, err := testPool.Exec(ctx, `
+			INSERT INTO activity_log (workspace_id, issue_id, actor_type, actor_id, action, details, created_at)
+			VALUES ($1, $2, 'member', $3, 'status_changed', '{"from":"todo","to":"in_progress"}'::jsonb, $4)
+		`, testWorkspaceID, issueID, testUserID, ts); err != nil {
+			t.Fatalf("seed activity %d: %v", i, err)
+		}
+	}
+	commentIDs := make([]string, 0, commentN)
+	for i := 0; i < commentN; i++ {
+		var id string
+		ts := base.Add(time.Duration(activityN+i) * time.Minute)
+		if err := testPool.QueryRow(ctx, `
+			INSERT INTO comment (issue_id, workspace_id, author_type, author_id, content, type, created_at, updated_at)
+			VALUES ($1, $2, 'member', $3, $4, 'comment', $5, $5)
+			RETURNING id
+		`, issueID, testWorkspaceID, testUserID, fmt.Sprintf("comment %d", i), ts).Scan(&id); err != nil {
+			t.Fatalf("seed comment %d: %v", i, err)
+		}
+		commentIDs = append(commentIDs, id)
+	}
+
+	// Walk older pages until exhausted, collecting every comment id seen.
+	seen := map[string]bool{}
+	cursor := ""
+	for page := 0; page < 10; page++ { // safety bound — true exit is has_more_before=false
+		query := "limit=30"
+		if cursor != "" {
+			query += "&before=" + cursor
+		}
+		resp, code := fetchTimeline(t, issueID, query)
+		if code != http.StatusOK {
+			t.Fatalf("page %d: expected 200, got %d", page, code)
+		}
+		for _, e := range resp.Entries {
+			if e.Type == "comment" {
+				seen[e.ID] = true
+			}
+		}
+		if !resp.HasMoreBefore {
+			break
+		}
+		if resp.NextCursor == nil {
+			t.Fatalf("page %d: has_more_before=true but next_cursor missing", page)
+		}
+		cursor = *resp.NextCursor
+	}
+
+	// All 80 seeded comments must be reachable through the cursor walk —
+	// pre-fix, the 50 unreturned comments after page 1 stayed hidden because
+	// the shared cursor skipped past them via the activity timestamp.
+	if len(seen) != commentN {
+		missing := []string{}
+		for _, id := range commentIDs {
+			if !seen[id] {
+				missing = append(missing, id)
+			}
+		}
+		t.Fatalf("expected to see all %d comments via cursor walk, saw %d. Missing: %v",
+			commentN, len(seen), missing)
 	}
 }
 
