@@ -114,21 +114,26 @@ export function formatTokens(n: number): string {
 // Cost estimation
 // ---------------------------------------------------------------------------
 
-// Pricing per million tokens (USD). Sourced from
-// https://platform.claude.com/docs/en/about-claude/pricing — keep in sync
-// when Anthropic releases new models or adjusts prices. cacheWrite reflects
-// the 5-minute cache TTL (1.25× input); the daemon reports
-// cache_creation_input_tokens without TTL metadata, so 5m is the safest /
-// cheapest assumption (matches the API default).
+// Pricing per million tokens (USD). Anthropic figures sourced from
+// https://platform.claude.com/docs/en/about-claude/pricing; OpenAI figures
+// from https://openai.com/api/pricing — keep in sync when providers release
+// new models or adjust prices.
+//
+// Anthropic's cacheWrite reflects the 5-minute cache TTL (1.25× input); the
+// daemon reports cache_creation_input_tokens without TTL metadata, so 5m is
+// the safest / cheapest assumption (matches the API default). OpenAI does
+// not bill cache writes separately (cached input is just discounted on
+// subsequent reads), so cacheWrite mirrors input there.
 //
 // Iteration order matters: the resolver's startsWith() fallback walks this
-// object in insertion order, so MORE SPECIFIC keys (e.g. claude-sonnet-4-5)
-// must precede SHORTER prefixes (e.g. claude-sonnet-4) of the same family.
+// object in insertion order, so MORE SPECIFIC keys (e.g. claude-sonnet-4-5,
+// gpt-5-codex) must precede SHORTER prefixes (e.g. claude-sonnet-4, gpt-5)
+// of the same family.
 const MODEL_PRICING: Record<
   string,
   { input: number; output: number; cacheRead: number; cacheWrite: number }
 > = {
-  // -- Current generation (4.5+ — Opus dropped from 15/75 to 5/25 here) --
+  // -- Anthropic: current generation (4.5+ — Opus dropped from 15/75 to 5/25 here) --
   "claude-haiku-4-5":   { input: 1,    output: 5,    cacheRead: 0.10, cacheWrite: 1.25 },
   "claude-sonnet-4-5":  { input: 3,    output: 15,   cacheRead: 0.30, cacheWrite: 3.75 },
   "claude-sonnet-4-6":  { input: 3,    output: 15,   cacheRead: 0.30, cacheWrite: 3.75 },
@@ -136,15 +141,30 @@ const MODEL_PRICING: Record<
   "claude-opus-4-6":    { input: 5,    output: 25,   cacheRead: 0.50, cacheWrite: 6.25 },
   "claude-opus-4-7":    { input: 5,    output: 25,   cacheRead: 0.50, cacheWrite: 6.25 },
 
-  // -- Pre-4.5 Opus (legacy, still served at original price tier) --
+  // -- Anthropic: pre-4.5 Opus (legacy, still served at original price tier) --
   "claude-opus-4-1":    { input: 15,   output: 75,   cacheRead: 1.50, cacheWrite: 18.75 },
   "claude-opus-4":      { input: 15,   output: 75,   cacheRead: 1.50, cacheWrite: 18.75 },
 
-  // -- Sonnet 4.0 (deprecated; same price as the 4.x family) --
+  // -- Anthropic: Sonnet 4.0 (deprecated; same price as the 4.x family) --
   "claude-sonnet-4":    { input: 3,    output: 15,   cacheRead: 0.30, cacheWrite: 3.75 },
 
-  // -- Older Haiku tier (defensive entry for the rare runtime still on it) --
+  // -- Anthropic: older Haiku tier (defensive entry for the rare runtime still on it) --
   "claude-haiku-3-5":   { input: 0.80, output: 4,    cacheRead: 0.08, cacheWrite: 1.00 },
+
+  // -- OpenAI: GPT-5 family (Codex CLI's default is gpt-5-codex; -codex/-mini/-nano variants priced per OpenAI tiers) --
+  "gpt-5-codex":        { input: 1.25, output: 10,   cacheRead: 0.125, cacheWrite: 1.25 },
+  "gpt-5-mini":         { input: 0.25, output: 2,    cacheRead: 0.025, cacheWrite: 0.25 },
+  "gpt-5-nano":         { input: 0.05, output: 0.40, cacheRead: 0.005, cacheWrite: 0.05 },
+  "gpt-5":              { input: 1.25, output: 10,   cacheRead: 0.125, cacheWrite: 1.25 },
+
+  // -- OpenAI: o-series reasoning models --
+  "o3-mini":            { input: 1.10, output: 4.40, cacheRead: 0.55,  cacheWrite: 1.10 },
+  "o3":                 { input: 2,    output: 8,    cacheRead: 0.50,  cacheWrite: 2 },
+  "o4-mini":            { input: 1.10, output: 4.40, cacheRead: 0.275, cacheWrite: 1.10 },
+
+  // -- OpenAI: GPT-4o family (legacy, kept for runtimes still configured against it) --
+  "gpt-4o-mini":        { input: 0.15, output: 0.60, cacheRead: 0.075, cacheWrite: 0.15 },
+  "gpt-4o":             { input: 2.50, output: 10,   cacheRead: 1.25,  cacheWrite: 2.50 },
 };
 
 // Resolve a model string to its pricing tier. Two layers of fallback so the
