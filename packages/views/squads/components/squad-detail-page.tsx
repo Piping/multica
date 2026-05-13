@@ -15,13 +15,13 @@ export function SquadDetailPage() {
 
   const { data: squad } = useQuery<Squad>({
     queryKey: ["squad", workspace?.id, squadId],
-    queryFn: () => api.get(`/api/squads/${squadId}`),
+    queryFn: () => api.getSquad(squadId),
     enabled: !!workspace?.id && !!squadId,
   });
 
   const { data: members = [] } = useQuery<SquadMember[]>({
     queryKey: ["squad-members", workspace?.id, squadId],
-    queryFn: () => api.get(`/api/squads/${squadId}/members`),
+    queryFn: () => api.listSquadMembers(squadId),
     enabled: !!workspace?.id && !!squadId,
   });
 

@@ -14,7 +14,7 @@ export function SquadsPage() {
   const p = useWorkspacePaths();
   const { data: squads = [], isLoading } = useQuery<Squad[]>({
     queryKey: ["squads", workspace?.id],
-    queryFn: () => api.get(`/api/squads`),
+    queryFn: () => api.listSquads(),
     enabled: !!workspace?.id,
   });
 

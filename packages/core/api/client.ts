@@ -87,6 +87,8 @@ import type {
   GitHubPullRequest,
   ListGitHubInstallationsResponse,
   GitHubConnectResponse,
+  Squad,
+  SquadMember,
 } from "../types";
 import type { OnboardingCompletionPath } from "../onboarding/types";
 import { type Logger, noopLogger } from "../logger";
@@ -1312,6 +1314,19 @@ export class ApiClient {
       method: "PUT",
       body: JSON.stringify(data),
     });
+  }
+
+  // Squads
+  async listSquads(): Promise<Squad[]> {
+    return this.fetch(`/api/squads`);
+  }
+
+  async getSquad(id: string): Promise<Squad> {
+    return this.fetch(`/api/squads/${id}`);
+  }
+
+  async listSquadMembers(squadId: string): Promise<SquadMember[]> {
+    return this.fetch(`/api/squads/${squadId}/members`);
   }
 
   // Autopilots
