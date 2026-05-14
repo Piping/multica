@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mattn/go-shellwords"
@@ -101,11 +102,26 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	// inherit the user's interactive shell PATH — fnm/nvm/volta multishells,
 	// the Anthropic native installer prefix, and per-user npm prefixes all
 	// live in dirs that only get added to PATH by ~/.zshrc or ~/.bashrc.
-	// shellResolvedAgents asks the user's login shell, exactly once, to
-	// resolve every standard agent name to its canonical absolute path, so
-	// we can find binaries the bare daemon process can't see. See
+	// shellResolvedAgents asks the user's login shell, lazily on first miss,
+	// to resolve every standard agent name to its canonical absolute path,
+	// so we can find binaries the bare daemon process can't see. See
 	// resolveAgentsViaLoginShell for the details and constraints.
-	shellResolved := resolveAgentsViaLoginShell(defaultAgentCommandNames)
+	//
+	// Laziness matters: the happy path (every agent on the daemon's PATH or
+	// pinned to an explicit MULTICA_*_PATH) must not pay the cost of
+	// spawning the user's login shell — that touches their rc files and
+	// adds startup latency that scales with whatever they put in there. We
+	// only fork a shell when a bare command name actually missed LookPath.
+	var (
+		shellResolveOnce sync.Once
+		shellResolved    map[string]string
+	)
+	getShellResolved := func() map[string]string {
+		shellResolveOnce.Do(func() {
+			shellResolved = resolveAgentsViaLoginShell(defaultAgentCommandNames)
+		})
+		return shellResolved
+	}
 	probe := func(envVar, defaultCmd, modelEnv string) (AgentEntry, bool) {
 		cmd := envOrDefault(envVar, defaultCmd)
 		if _, err := exec.LookPath(cmd); err == nil {
@@ -121,7 +137,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 		if strings.ContainsAny(cmd, "/\\") {
 			return AgentEntry{}, false
 		}
-		if path, ok := shellResolved[cmd]; ok {
+		if path, ok := getShellResolved()[cmd]; ok {
 			return AgentEntry{
 				Path:  path,
 				Model: strings.TrimSpace(os.Getenv(modelEnv)),
@@ -450,6 +466,18 @@ var defaultAgentCommandNames = []string{
 // it had before this code was added.
 const loginShellResolveTimeout = 3 * time.Second
 
+// loginShellResolveWaitDelay is the hard cap that runs *after*
+// loginShellResolveTimeout has elapsed and `CommandContext` has signalled the
+// shell to exit. The context kills the shell process itself, but rc files in
+// the wild routinely background things that inherit stdout (`nvm` shims,
+// `direnv hook`, `eval $(starship init)`, plain `&`). Those survivors keep
+// the stdout pipe open and `cmd.Output()` will block on EOF for as long as
+// they live. Cmd.WaitDelay (Go 1.20+) forcibly closes the pipes and returns
+// once this delay elapses, so the total daemon-startup penalty caused by a
+// pathological rc file is bounded by `timeout + waitDelay`, not by however
+// long the user's background processes happen to run.
+const loginShellResolveWaitDelay = 2 * time.Second
+
 // supportedLoginShells limits which interpreters we will invoke via
 // `<shell> -ilc <script>`. Sticking to POSIX-compatible shells means the
 // resolver script below works unchanged. Notably absent: fish (uses
@@ -520,7 +548,9 @@ func resolveAgentsViaLoginShell(names []string) map[string]string {
 	ctx, cancel := context.WithTimeout(context.Background(), loginShellResolveTimeout)
 	defer cancel()
 
-	raw, err := exec.CommandContext(ctx, shell, "-ilc", buildLoginShellResolveScript(safe)).Output()
+	cmd := exec.CommandContext(ctx, shell, "-ilc", buildLoginShellResolveScript(safe))
+	cmd.WaitDelay = loginShellResolveWaitDelay
+	raw, err := cmd.Output()
 	if err != nil {
 		return out
 	}
@@ -552,12 +582,27 @@ func resolveAgentsViaLoginShell(names []string) map[string]string {
 // runs inside `$SHELL -ilc`. The script:
 //
 //  1. iterates the provided command names,
-//  2. uses POSIX `command -v` to find each one on the interactive PATH,
-//  3. rejects results that are not absolute paths (which filters out aliases
-//     and shell functions — `command -v` prints their definition, not a path),
-//  4. canonicalises the directory via `cd ... && pwd -P` so symlinked prefix
+//  2. strips any locally-defined alias and shell function with that name so
+//     `command -v` reaches through to a real binary on PATH (see below),
+//  3. uses POSIX `command -v` to find each one on the interactive PATH,
+//  4. rejects results that are not absolute paths (defence in depth — if the
+//     unalias/unset -f pair somehow didn't take effect, `command -v` would
+//     still print the alias/function definition, and we'd rather drop it
+//     than hand back garbage),
+//  5. canonicalises the directory via `cd ... && pwd -P` so symlinked prefix
 //     dirs (fnm/nvm/volta) collapse to stable paths,
-//  5. prints `<name>\t<canonical_path>` one entry per line for the caller.
+//  6. prints `<name>\t<canonical_path>` one entry per line for the caller.
+//
+// Why steps 2 is important — and why this PR's first revision missed #2512:
+// the motivating case has `alias claude=...` in ~/.zshrc *and* fnm's real
+// claude binary further down on PATH. With `-i` set, the alias loads, and
+// `command -v claude` returns `claude: aliased to ...` (zsh) or `alias
+// claude='...'` (bash) — neither starts with `/`, so step 4 drops them, and
+// the loop never looks at PATH again. Unaliasing inside the same shell makes
+// `command -v` fall back to the PATH search the daemon actually wants.
+// Shell functions exhibit the same shadowing in bash/zsh, hence `unset -f`.
+// Both calls are wrapped in `2>/dev/null` so the harmless "no such alias"
+// error never reaches stderr.
 //
 // All input names are vetted by isSafeAgentName before they reach this
 // function, so inlining them unquoted into the for-loop word list is safe.
@@ -569,6 +614,8 @@ func buildLoginShellResolveScript(names []string) string {
 		b.WriteString(n)
 	}
 	b.WriteString("; do\n")
+	b.WriteString("  unalias \"$n\" 2>/dev/null\n")
+	b.WriteString("  unset -f \"$n\" 2>/dev/null\n")
 	b.WriteString("  p=$(command -v \"$n\" 2>/dev/null) || continue\n")
 	b.WriteString("  [ -n \"$p\" ] || continue\n")
 	b.WriteString("  case \"$p\" in /*) ;; *) continue ;; esac\n")
