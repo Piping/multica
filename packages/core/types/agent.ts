@@ -34,6 +34,42 @@ export interface RuntimeDevice {
 
 export type AgentRuntime = RuntimeDevice;
 
+// RFC v6.1 / §6.2: a Computer is the (workspace_id, daemon_id) aggregate of
+// every agent_runtime row hosted by one daemon installation. computer_id ==
+// daemon_id (§6.1 / D1) — no new table backs this, the server just groups
+// runtimes by daemon and rolls up the per-runtime fields. Older backends
+// that haven't shipped /api/computers will 404; the UI must degrade
+// gracefully (use the runtime list as a fallback). Cards that depend on a
+// single field should optional-chain — every field can be missing.
+export type ComputerKind = "desktop" | "remote" | "cloud" | "unknown";
+
+export interface Computer {
+  id: string; // = daemon_id, per D1
+  workspace_id: string;
+  name: string;
+  /** Coarse classifier derived from runtime_mode + metadata.install_source. */
+  kind: ComputerKind;
+  device_info: string;
+  install_source: string;
+  metadata: Record<string, unknown>;
+  owner_id: string | null;
+  status: "online" | "offline";
+  last_seen_at: string | null;
+  created_at: string;
+  runtime_count: number;
+}
+
+/** Full detail response: list rollup + each runtime under this computer. */
+export interface ComputerDetail extends Computer {
+  runtimes: RuntimeDevice[];
+}
+
+/** Response from POST /api/install-tokens (workspace-scoped). */
+export interface InstallTokenMintResponse {
+  token: string;
+  expires_at: string;
+}
+
 // Coarse classifier set by the backend when a task transitions to "failed".
 // Mirrors the migration-055 enum in agent_task_queue.failure_reason. Used by
 // the agent presence derivation and the UI failure-message lookup.

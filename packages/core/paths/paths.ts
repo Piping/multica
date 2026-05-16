@@ -34,6 +34,11 @@ function workspaceScoped(slug: string) {
     myIssues: () => `${ws}/my-issues`,
     runtimes: () => `${ws}/runtimes`,
     runtimeDetail: (id: string) => `${ws}/runtimes/${encode(id)}`,
+    // RFC v6.1: Computer is the new canonical name for what users used to
+    // call Runtime. /runtimes is kept as an alias and redirects to /computers
+    // at the route layer (web Next.js redirect + desktop router catch-all).
+    computers: () => `${ws}/computers`,
+    computerDetail: (id: string) => `${ws}/computers/${encode(id)}`,
     skills: () => `${ws}/skills`,
     skillDetail: (id: string) => `${ws}/skills/${encode(id)}`,
     settings: () => `${ws}/settings`,

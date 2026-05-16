@@ -1,0 +1,75 @@
+{
+  "page": {
+    "title": "Computers",
+    "tagline": "Machines and cloud sandboxes that host agent runtimes.",
+    "add_computer": "Add Computer",
+    "search_placeholder": "Search computers…",
+    "empty": {
+      "title": "No computers connected yet",
+      "hint": "Add a computer to let your agents run code, read files, and use local tools.",
+      "cta": "Add your first computer"
+    },
+    "no_matches": "No computers match \"{{query}}\"."
+  },
+  "list": {
+    "col_name": "Name",
+    "col_kind": "Kind",
+    "col_status": "Status",
+    "col_runtimes": "Agent runtimes",
+    "col_last_seen": "Last seen",
+    "kind": {
+      "desktop": "This Desktop",
+      "remote": "Connected machine",
+      "cloud": "Cloud computer",
+      "unknown": "Unknown"
+    },
+    "status": {
+      "online": "Online",
+      "offline": "Offline"
+    },
+    "runtime_count": "{{count}} runtime",
+    "runtime_count_plural": "{{count}} runtimes"
+  },
+  "add": {
+    "title": "Add a computer",
+    "subtitle": "Where should this computer live?",
+    "this_desktop": {
+      "title": "This Desktop",
+      "recommended": "Recommended",
+      "description": "Use the Mac you're currently on. Already set up.",
+      "cta": "Use"
+    },
+    "another_machine": {
+      "title": "Another machine",
+      "description": "A server, another laptop, or a remote box. Install with one command.",
+      "cta": "Add"
+    },
+    "cloud": {
+      "title": "Cloud computer",
+      "badge": "Coming soon",
+      "description": "A managed sandbox provisioned by Multica. No setup.",
+      "cta": "Notify me"
+    },
+    "cancel": "Cancel"
+  },
+  "install": {
+    "title": "Install Multica on the target machine",
+    "step_1": "SSH into the machine you want to connect.",
+    "step_2": "Paste and run this command:",
+    "copy": "Copy",
+    "copied": "Copied",
+    "token_warning": "This token is shown once and expires in 15 minutes. Keep this page open until the new computer appears.",
+    "waiting": "Waiting for this computer to register…",
+    "polling_hint": "We'll detect it automatically when it connects.",
+    "diagnose_hint": "Add --diagnose to write a redacted log to ~/Library/Logs/Multica."
+  },
+  "remove": {
+    "trigger": "Remove computer",
+    "title": "Remove this computer?",
+    "description": "The daemon will stop receiving tasks from this workspace and the credential will be revoked. The machine itself is not uninstalled.",
+    "in_use_title": "This computer is in use",
+    "in_use_description": "{{count}} active agent runs are bound to this computer. Stop or reassign them before removing.",
+    "confirm": "Remove",
+    "cancel": "Cancel"
+  }
+}

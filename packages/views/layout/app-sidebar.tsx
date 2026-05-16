@@ -112,6 +112,7 @@ type NavKey =
   | "squads"
   | "usage"
   | "runtimes"
+  | "computers"
   | "skills"
   | "settings";
 
@@ -126,6 +127,7 @@ type NavLabelKey =
   | "squads"
   | "usage"
   | "runtimes"
+  | "computers"
   | "skills"
   | "settings";
 
@@ -143,7 +145,14 @@ const workspaceNav: { key: NavKey; labelKey: NavLabelKey; icon: typeof Inbox }[]
   { key: "usage", labelKey: "usage", icon: BarChart3 },
 ];
 
+// RFC v6.1: `computers` is the new canonical entry; `runtimes` stays in
+// the menu for one release so users with existing pins / muscle memory
+// have a fallback while the Add Computer modal + Install / Detail / Remove
+// pages land in follow-up commits. The `runtimes` row is removed in the
+// commit that ships the full Computer detail surface and the
+// /runtimes → /computers redirect on web.
 const configureNav: { key: NavKey; labelKey: NavLabelKey; icon: typeof Inbox }[] = [
+  { key: "computers", labelKey: "computers", icon: Monitor },
   { key: "runtimes", labelKey: "runtimes", icon: Monitor },
   { key: "skills", labelKey: "skills", icon: BookOpenText },
   { key: "settings", labelKey: "settings", icon: Settings },

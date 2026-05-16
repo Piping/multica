@@ -1,0 +1,75 @@
+{
+  "page": {
+    "title": "电脑",
+    "tagline": "托管 Agent 运行时的本地机器和云端沙箱。",
+    "add_computer": "添加电脑",
+    "search_placeholder": "搜索电脑…",
+    "empty": {
+      "title": "还没有连接的电脑",
+      "hint": "添加一台电脑后，Agent 才能在上面执行命令、读写文件、调用本地工具。",
+      "cta": "添加第一台电脑"
+    },
+    "no_matches": "没有符合 \"{{query}}\" 的电脑。"
+  },
+  "list": {
+    "col_name": "名称",
+    "col_kind": "类型",
+    "col_status": "状态",
+    "col_runtimes": "Agent 运行时",
+    "col_last_seen": "最后在线",
+    "kind": {
+      "desktop": "当前桌面",
+      "remote": "远程机器",
+      "cloud": "云端",
+      "unknown": "未知"
+    },
+    "status": {
+      "online": "在线",
+      "offline": "离线"
+    },
+    "runtime_count": "{{count}} 个运行时",
+    "runtime_count_plural": "{{count}} 个运行时"
+  },
+  "add": {
+    "title": "添加电脑",
+    "subtitle": "电脑要放在哪里？",
+    "this_desktop": {
+      "title": "当前桌面",
+      "recommended": "推荐",
+      "description": "使用你当前使用的 Mac，已自动配置好。",
+      "cta": "使用"
+    },
+    "another_machine": {
+      "title": "其他机器",
+      "description": "服务器、其他笔记本，或远程主机。一行命令即可接入。",
+      "cta": "添加"
+    },
+    "cloud": {
+      "title": "云端电脑",
+      "badge": "即将推出",
+      "description": "Multica 托管的沙箱环境，开箱即用。",
+      "cta": "提醒我"
+    },
+    "cancel": "取消"
+  },
+  "install": {
+    "title": "在目标机器上安装 Multica",
+    "step_1": "SSH 登录到你要接入的机器。",
+    "step_2": "粘贴并运行下面这条命令：",
+    "copy": "复制",
+    "copied": "已复制",
+    "token_warning": "Token 仅展示一次，15 分钟后失效。新电脑上线前请勿关闭本页。",
+    "waiting": "正在等待这台电脑上线…",
+    "polling_hint": "连接成功后会自动显示。",
+    "diagnose_hint": "加上 --diagnose 会把脱敏后的日志写到 ~/Library/Logs/Multica。"
+  },
+  "remove": {
+    "trigger": "移除电脑",
+    "title": "确定要移除这台电脑？",
+    "description": "守护进程将不再从本工作区获取任务，凭据会被吊销。机器本身不会被卸载。",
+    "in_use_title": "这台电脑正在使用中",
+    "in_use_description": "有 {{count}} 个活跃的 Agent 任务还在这台电脑上运行，请先停止或转交。",
+    "confirm": "移除",
+    "cancel": "取消"
+  }
+}

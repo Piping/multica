@@ -20,6 +20,7 @@ import { AutopilotsPage } from "@multica/views/autopilots/components";
 import { MyIssuesPage } from "@multica/views/my-issues";
 import { SkillsPage } from "@multica/views/skills";
 import { DesktopRuntimesPage } from "./components/desktop-runtimes-page";
+import { ComputersPage } from "@multica/views/computers";
 import { AgentsPage } from "@multica/views/agents";
 import { SquadsPage, SquadDetailPage as SquadDetailPageView } from "@multica/views/squads/components";
 import { InboxPage } from "@multica/views/inbox";
@@ -125,6 +126,16 @@ export const appRoutes: RouteObject[] = [
             path: "my-issues",
             element: <MyIssuesPage />,
             handle: { title: "My Issues" },
+          },
+          {
+            // RFC v6.1: /computers is the new canonical surface. /runtimes
+            // is preserved as a redirect-only path so existing pins, tabs,
+            // and external links stay valid. Detail pages keep using the
+            // legacy /runtimes/:id route for now — Computer-detail tabs
+            // land in a follow-up commit on this PR.
+            path: "computers",
+            element: <ComputersPage />,
+            handle: { title: "Computers" },
           },
           {
             path: "runtimes",

@@ -22,6 +22,9 @@ import type {
   AgentActivityBucket,
   AgentRunCount,
   AgentRuntime,
+  Computer,
+  ComputerDetail,
+  InstallTokenMintResponse,
   InboxItem,
   IssueSubscriber,
   Comment,
@@ -788,6 +791,41 @@ export class ApiClient {
   // surfaces can clear their live cards.
   async cancelAgentTasks(id: string): Promise<{ cancelled: number }> {
     return this.fetch(`/api/agents/${id}/cancel-tasks`, { method: "POST" });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Computers (RFC v6.1 / §6.2)
+  // ---------------------------------------------------------------------------
+  // /api/computers/* is the new aggregate surface. computer_id == daemon_id
+  // (D1). These endpoints coexist with /api/runtimes/* — older desktop builds
+  // and older daemons keep using the legacy surface, so neither path is
+  // deprecated server-side. The UI prefers /api/computers but falls back to
+  // the runtime list when the server is too old to expose it.
+  async listComputers(): Promise<Computer[]> {
+    return this.fetch<Computer[]>(`/api/computers`);
+  }
+
+  async getComputer(id: string): Promise<ComputerDetail> {
+    return this.fetch<ComputerDetail>(`/api/computers/${encodeURIComponent(id)}`);
+  }
+
+  // Server refuses with 409 when any runtime under the computer has active
+  // tasks (§6.3 / D2). The fetch wrapper turns non-2xx into ApiError, so
+  // callers should `try/catch` and surface `err.body.active_agents` to the
+  // user.
+  async deleteComputer(id: string): Promise<void> {
+    await this.fetch(`/api/computers/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  // POST /api/install-tokens — mints a one-time `mit_` install token bound
+  // to the current workspace (resolved server-side from X-Workspace-ID).
+  // The token is shown to the user exactly once and consumed by
+  // `multica daemon start --install-token <mit_>` on the target machine.
+  async mintInstallToken(): Promise<InstallTokenMintResponse> {
+    return this.fetch<InstallTokenMintResponse>(`/api/install-tokens`, {
+      method: "POST",
+      body: "{}",
+    });
   }
 
   async listRuntimes(params?: { workspace_id?: string; owner?: "me" }): Promise<AgentRuntime[]> {
