@@ -381,6 +381,20 @@ func TestListComments_FlagCombinationRules(t *testing.T) {
 			status: http.StatusBadRequest,
 		},
 		{
+			name: "before + before_id without recent rejected",
+			// Cursor without --recent used to fall through to the default /
+			// since path and silently return the full timeline (the gap Elon
+			// called out in the PR #2787 second review). The 400 here pins
+			// the documented "cursor scrolls within a recent window" rule.
+			query: (func() string {
+				v := url.Values{}
+				v.Set("before", time.Now().UTC().Format(time.RFC3339))
+				v.Set("before_id", uuid.NewString())
+				return v.Encode()
+			})(),
+			status: http.StatusBadRequest,
+		},
+		{
 			name:   "zero recent rejected",
 			query:  "recent=0",
 			status: http.StatusBadRequest,

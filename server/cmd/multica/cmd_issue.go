@@ -928,13 +928,23 @@ func runIssueCommentList(cmd *cobra.Command, args []string) error {
 	since, _ := cmd.Flags().GetString("since")
 	thread, _ := cmd.Flags().GetString("thread")
 	recent, _ := cmd.Flags().GetInt("recent")
+	// Flags().Changed distinguishes "user did not pass --recent" from
+	// "user explicitly passed --recent 0" (or a negative value). The
+	// GetInt zero-value collapses both cases, which would otherwise
+	// cause us to silently drop an invalid value and fall back to the
+	// default unparameterized list — exactly the drift Elon flagged in
+	// the PR #2787 second review.
+	recentSet := cmd.Flags().Changed("recent")
 	before, _ := cmd.Flags().GetString("before")
 	beforeID, _ := cmd.Flags().GetString("before-id")
 
 	// Mirror the server-side combination rules client-side so the user gets
 	// a clear local error instead of a 400 round-trip. These match the
 	// validation in handler.ListComments (server/internal/handler/comment.go).
-	if thread != "" && recent > 0 {
+	if recentSet && recent <= 0 {
+		return fmt.Errorf("--recent must be a positive integer")
+	}
+	if thread != "" && recentSet {
 		return fmt.Errorf("--thread and --recent are mutually exclusive")
 	}
 	if thread != "" && (before != "" || beforeID != "") {
@@ -942,6 +952,9 @@ func runIssueCommentList(cmd *cobra.Command, args []string) error {
 	}
 	if (before == "") != (beforeID == "") {
 		return fmt.Errorf("--before and --before-id must be set together (composite cursor for stable pagination)")
+	}
+	if before != "" && !recentSet {
+		return fmt.Errorf("--before / --before-id require --recent (cursor scrolls within a recent window)")
 	}
 
 	params := url.Values{}
@@ -951,7 +964,7 @@ func runIssueCommentList(cmd *cobra.Command, args []string) error {
 	if thread != "" {
 		params.Set("thread", thread)
 	}
-	if recent > 0 {
+	if recentSet {
 		params.Set("recent", fmt.Sprintf("%d", recent))
 	}
 	if before != "" {

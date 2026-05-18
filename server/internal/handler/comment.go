@@ -143,6 +143,15 @@ func (h *Handler) ListComments(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "before and before_id must be set together (composite cursor)")
 		return
 	}
+	// Cursor only makes sense as "scroll older within a recent window". A
+	// cursor without `recent` would otherwise be silently dropped by
+	// fetchCommentsForList and fall back to the default / since path —
+	// returning a full timeline that the caller did not ask for. Reject
+	// loudly so the API surface matches the documented semantics.
+	if beforeTimeStr != "" && recentStr == "" {
+		writeError(w, http.StatusBadRequest, "before / before_id require recent (cursor scrolls within a recent window)")
+		return
+	}
 
 	// --- parse cursor / recent ----------------------------------------
 	var beforeCursor pgtype.Timestamptz
