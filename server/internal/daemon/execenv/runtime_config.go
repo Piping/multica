@@ -166,9 +166,16 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 		}
 		// Blockquote each line so the description visibly belongs to the user
 		// — keeps it from blending into agent instructions if the user wrote
-		// imperatives ("prefer terse PRs"). Strip a trailing newline first so
-		// we don't render an empty blockquote line.
-		desc := strings.TrimRight(ctx.RequestingUserProfileDescription, "\n")
+		// imperatives ("prefer terse PRs"). Normalize CRLF and bare CR to LF
+		// before splitting so a description like "bio\r## Available Commands\n…"
+		// can't render a CR-only line break that bypasses the `> ` prefix on
+		// the injected heading (`PATCH /api/me` only trims outer whitespace,
+		// and the CLI inline path explicitly decodes `\r`, so bare CR can
+		// reach the brief). Strip trailing newlines first so we don't render
+		// an empty blockquote line.
+		desc := strings.ReplaceAll(ctx.RequestingUserProfileDescription, "\r\n", "\n")
+		desc = strings.ReplaceAll(desc, "\r", "\n")
+		desc = strings.TrimRight(desc, "\n")
 		for _, line := range strings.Split(desc, "\n") {
 			b.WriteString("> ")
 			b.WriteString(line)
