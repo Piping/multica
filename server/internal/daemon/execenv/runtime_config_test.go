@@ -6,10 +6,11 @@ import (
 )
 
 // Parent/Sub-issue Protocol — the brief must teach every issue-bound agent
-// two things: (A) notify the parent when this issue finishes, and (B) pick
-// `backlog` vs `todo` deliberately when creating sub-issues. The protocol is
-// runtime-only (no server-side state sync), so the rules live in the meta
-// skill and these tests guard the wording the rest of the design relies on.
+// three things: close out the child issue, post a best-effort top-level
+// notification on the parent, and pick `backlog` vs `todo` deliberately
+// when creating sub-issues. The protocol is runtime-only (no server-side
+// state sync), so the rules live in the meta skill and these tests guard
+// the wording the rest of the design relies on.
 
 func TestParentSubIssueProtocolEmittedForAssignmentTrigger(t *testing.T) {
 	t.Parallel()
@@ -21,50 +22,24 @@ func TestParentSubIssueProtocolEmittedForAssignmentTrigger(t *testing.T) {
 	if !strings.Contains(out, "## Parent / Sub-issue Protocol") {
 		t.Fatalf("expected Parent / Sub-issue Protocol section in assignment-triggered brief")
 	}
-	// Behavior A — order, top-level comment, best-effort framing.
+	// Three core rules in compact form (Elon's third review on PR #2918):
+	// best-effort framing, assignment-branch closing instruction, top-level
+	// parent comment with the simplified mention-by-assignee-type rule, and
+	// the `backlog` vs `todo` sub-issue creation semantics.
 	for _, want := range []string{
-		"### A. Notify the parent when this issue is finishing",
-		"finish your own issue first",
+		"best-effort",
+		// rule 1 — assignment branch keeps the unconditional in_review flip
 		"`multica issue status <this-issue-id> in_review`",
+		// rule 2 — top-level parent comment + simplified mention rule
 		"top-level",
 		"NO `--parent`",
-		"best-effort",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("behavior A missing %q", want)
-		}
-	}
-	// Simplified mention rule (Bohan's directive on PR #2918): always
-	// `@mention` the parent's assignee using the URL that matches
-	// `assignee_type`, with no per-case branching. The brief must
-	// teach all three mention URLs and tell the agent not to second-guess.
-	for _, want := range []string{
 		"`@mention` the parent's assignee",
 		"`mention://agent/<id>`",
 		"`mention://member/<id>`",
 		"`mention://squad/<id>`",
 		"no assignee",
 		"Don't try to second-guess",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("simplified mention rule missing %q", want)
-		}
-	}
-	// And the previous per-case mention table must be gone — the whole
-	// point of this revision is to drop the same-agent / member / squad /
-	// closed-parent branches.
-	for _, banned := range []string{
-		"| Parent assignee | Parent status |",
-		"The same agent as yourself",
-		"| Member or squad |",
-	} {
-		if strings.Contains(out, banned) {
-			t.Errorf("expected the per-case mention table row %q to be removed", banned)
-		}
-	}
-	// Behavior B — backlog vs todo decision.
-	for _, want := range []string{
-		"### B. Choose `backlog` vs `todo` when creating sub-issues",
+		// rule 3 — backlog vs todo decision
 		"`--status todo` → **start now**",
 		"`--status backlog` → **wait**",
 		"`multica issue status <child-id> todo`",
@@ -72,7 +47,24 @@ func TestParentSubIssueProtocolEmittedForAssignmentTrigger(t *testing.T) {
 		"`--status backlog` from the start",
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("behavior B missing %q", want)
+			t.Errorf("protocol missing %q", want)
+		}
+	}
+	// The per-case mention table from the prior revision must remain
+	// removed — the whole point of the current revision is to drop branchy
+	// "same-agent / member / squad / closed-parent" decision tables.
+	for _, banned := range []string{
+		"| Parent assignee | Parent status |",
+		"The same agent as yourself",
+		"| Member or squad |",
+		// Earlier revisions introduced ### A / ### B subheadings; the
+		// compact revision drops them so the section reads as a
+		// convention, not a spec.
+		"### A. Notify the parent",
+		"### B. Choose",
+	} {
+		if strings.Contains(out, banned) {
+			t.Errorf("expected %q to be removed", banned)
 		}
 	}
 }
@@ -88,13 +80,45 @@ func TestParentSubIssueProtocolEmittedForCommentTrigger(t *testing.T) {
 	if !strings.Contains(out, "## Parent / Sub-issue Protocol") {
 		t.Fatalf("expected Parent / Sub-issue Protocol section in comment-triggered brief")
 	}
-	// Comment-triggered runs may still be wrapping up sub-issue work, so
-	// both behaviors must appear here too.
-	if !strings.Contains(out, "### A. Notify the parent when this issue is finishing") {
-		t.Errorf("comment-triggered brief missing behavior A heading")
+	// Comment-triggered runs must still carry the sub-issue creation rule
+	// (it applies whenever the agent might spawn a child, not only when
+	// closing one).
+	for _, want := range []string{
+		"`--status todo` → **start now**",
+		"`--status backlog` → **wait**",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("comment-triggered protocol missing %q", want)
+		}
 	}
-	if !strings.Contains(out, "### B. Choose `backlog` vs `todo` when creating sub-issues") {
-		t.Errorf("comment-triggered brief missing behavior B heading")
+}
+
+// Lock in the "compact convention, not a spec" framing: the Parent /
+// Sub-issue Protocol section must stay short. Elon's third review on PR
+// #2918 collapsed an earlier 29-line version into a 3-rule convention; this
+// guard prevents future edits from silently re-inflating it.
+func TestParentSubIssueProtocolIsCompact(t *testing.T) {
+	t.Parallel()
+	ctx := TaskContextForEnv{
+		IssueID: "12345678-1234-1234-1234-123456789012",
+	}
+	out := buildMetaSkillContent("claude", ctx)
+
+	const header = "## Parent / Sub-issue Protocol"
+	start := strings.Index(out, header)
+	if start == -1 {
+		t.Fatalf("protocol section missing")
+	}
+	rest := out[start+len(header):]
+	end := strings.Index(rest, "\n## ")
+	var section string
+	if end == -1 {
+		section = out[start:]
+	} else {
+		section = out[start : start+len(header)+end]
+	}
+	if got := strings.Count(section, "\n"); got > 10 {
+		t.Errorf("Parent / Sub-issue Protocol should stay ≤10 lines (best-effort convention, not a spec); got %d:\n%s", got, section)
 	}
 }
 

@@ -343,43 +343,25 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 		fmt.Fprintf(&b, "7. If blocked, run `multica issue status %s blocked` and post a comment explaining why\n\n", ctx.IssueID)
 	}
 
-	// Parent / Sub-issue Protocol — emitted whenever the agent is running on a
-	// real Multica issue (assignment- or comment-triggered). The platform does
-	// not auto-notify a parent when a child changes status; this section
-	// teaches the child agent to post the signal as a best-effort follow-up,
-	// and teaches any agent creating sub-issues to use `backlog` vs `todo`
-	// deliberately. Skipped for chat, quick-create, and run-only autopilot
-	// runs, which have no parent/child semantics.
+	// Parent / Sub-issue Protocol — best-effort convention, not a server-side
+	// state sync. Skipped for chat, quick-create, and run-only autopilot runs
+	// which have no parent/child semantics. Deliberately kept short (Elon's
+	// third review of PR #2918): three rules, no per-case branching tables,
+	// no "spec" feel.
 	if ctx.IssueID != "" && ctx.ChatSessionID == "" && ctx.QuickCreatePrompt == "" && ctx.AutopilotRunID == "" {
 		b.WriteString("## Parent / Sub-issue Protocol\n\n")
-		b.WriteString("Sub-issues are linked to a parent through `parent_issue_id`. The platform does **not** auto-notify a parent when its child changes status, so the child agent is responsible for posting that signal as a best-effort comment. Two behaviors apply.\n\n")
-
-		b.WriteString("### A. Notify the parent when this issue is finishing\n\n")
-		b.WriteString("Applies whenever you are wrapping up this issue and `parent_issue_id` (from the initial `multica issue get` JSON) is non-empty. Order matters — finish your own issue first, then write to the parent:\n\n")
+		b.WriteString("This is a best-effort convention — the platform does NOT auto-sync parent and child status. When this issue has `parent_issue_id`:\n\n")
 		if ctx.TriggerCommentID != "" {
 			// Comment-triggered runs must NOT override the comment-triggered
 			// workflow rule "Do NOT change the issue status unless the
-			// comment explicitly asks for it". Step A here is reply-shaped,
-			// not status-shaped — the protocol's parent notification is
-			// gated on the run actually closing out child work.
-			b.WriteString("1. Complete your reply on **this** issue per the comment-triggered workflow above. The rule \"Do NOT change the issue status unless the comment explicitly asks for it\" still applies — do **not** add an unconditional status flip to `in_review` (or anything else) just because you are wrapping up child work. Only change this issue's status when the triggering comment explicitly asked for a status change.\n")
-			b.WriteString("   The parent-notification steps below apply only when this run is in fact closing out the child's work (typically because the triggering comment told you to finish and hand the deliverable back to the parent). If you are just answering a question, doing partial work, or otherwise not wrapping up, stop after replying — skip the parent notification entirely.\n")
+			// comment explicitly asks for it". Parent notification is gated
+			// on the run actually closing out child work.
+			b.WriteString("1. **Closing out child work.** Reply on this issue per the comment-triggered workflow above. \"Do NOT change the issue status unless the comment explicitly asks for it\" still applies — do **not** add an unconditional status flip. If you are just answering a question or doing partial work (not closing out the child), skip the parent notification entirely.\n")
 		} else {
-			b.WriteString("1. Post your final-results comment on **this** issue and run `multica issue status <this-issue-id> in_review`. Your own issue remains the source of truth for what you did; do not put the deliverable in the parent comment.\n")
+			b.WriteString("1. **Closing out child work.** Post your final-results comment on this issue, then run `multica issue status <this-issue-id> in_review`.\n")
 		}
-		b.WriteString("2. Run `multica issue get <parent-id> --output json` and read `assignee_id` and `assignee_type`. If this call fails (parent removed, no access), skip the notification — do not block your own finish over it.\n")
-		b.WriteString("3. Post a single **top-level** comment on the parent issue (`multica issue comment add <parent-id> ...` with NO `--parent`). Follow the comment-formatting rules already in this brief for the current provider when choosing between `--content`, `--content-stdin`, and `--content-file`. The body should reference this child as `[MUL-<num>](mention://issue/<child-id>)`, state the child's current status, give a one-line outcome plus whatever link the parent owner needs, and `@mention` the parent's assignee using the URL that matches `assignee_type` — `mention://agent/<id>`, `mention://member/<id>`, or `mention://squad/<id>`. If the parent has no assignee, post the same comment without an `@mention`. Don't try to second-guess the mention (same agent as yourself, parent already closed, etc.) — the platform's dedup handles re-triggers, and mentioning the assignee is the simple, predictable rule.\n\n")
-		b.WriteString("This signal is best-effort, not a guaranteed handshake. Treat it as the parent's hint that a child is ready for review.\n\n")
-
-		b.WriteString("### B. Choose `backlog` vs `todo` when creating sub-issues\n\n")
-		b.WriteString("When you run `multica issue create --parent <this-issue-id> --assignee-id <agent-uuid> ...`, `--status` defaults to `todo`, which triggers an agent assignee immediately. Use this knob deliberately:\n\n")
-		b.WriteString("- `--status todo` → **start now**. Use only for the sub-issue you actually want running this turn.\n")
-		b.WriteString("- `--status backlog` → **wait**. Assignee is set but the agent will not be triggered. Promote it later with `multica issue status <child-id> todo` when its turn comes.\n\n")
-		b.WriteString("Decision shortcuts:\n\n")
-		b.WriteString("- N independent parallel sub-tasks → all `--status todo`.\n")
-		b.WriteString("- Strict serial Step 1 → 2 → 3 → only Step 1 gets `--status todo`; Step 2 and Step 3 are created with `--status backlog` from the start. When Step 1 notifies you via behavior A, promote Step 2 with `multica issue status <step2-id> todo`.\n")
-		b.WriteString("- Dependencies you have not figured out yet → create everything with `--status backlog` and promote them one by one.\n\n")
-		b.WriteString("Forgetting `--status backlog` and leaving the default `todo` is the common cause of supposedly-serial sub-tasks racing each other.\n\n")
+		b.WriteString("2. **Notify the parent.** Post one **top-level** comment on the parent (`multica issue comment add <parent-id>` with NO `--parent`): link the child as `[MUL-<num>](mention://issue/<child-id>)`, give its current status and a one-line outcome, and `@mention` the parent's assignee using the URL that matches `assignee_type` — `mention://agent/<id>`, `mention://member/<id>`, or `mention://squad/<id>`. If there is no assignee, post without the `@mention`. Don't try to second-guess (same agent, closed parent, etc.) — platform dedup handles re-triggers.\n")
+		b.WriteString("3. **Creating sub-issues.** `--status todo` → **start now** (the default — agent assignee fires immediately). `--status backlog` → **wait** (assignee is set, no trigger; promote later with `multica issue status <child-id> todo`). Parallel children: all `--status todo`. Strict serial Step 1→2→3: only Step 1 is `todo`; Steps 2/3 are `--status backlog` from the start, promoted in turn.\n\n")
 	}
 
 	if len(ctx.AgentSkills) > 0 {
