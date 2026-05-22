@@ -366,22 +366,16 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 		fmt.Fprintf(&b, "9. If blocked, run `multica issue status %s blocked` and post a comment explaining why\n\n", ctx.IssueID)
 	}
 
-	// Parent / Sub-issue Protocol — what the agent still needs to know about
-	// parent/child issues now that the platform owns the cross-issue
-	// notification (MUL-2538). The previous revision asked every child agent
-	// to post a comment on the parent itself; that produced self-mention
-	// loops, planner ping-pong, and accidental `MUL-` prefix hardcoding
-	// (PR #2918 user feedback). The server now posts a top-level system
-	// comment on the parent whenever a child transitions into `done`, so
-	// rule 1 here is informational — the agent must NOT also post one or it
-	// will recreate the noise this change removed. Rule 2 (sub-issue
-	// creation semantics) is unrelated and stays. Section is skipped for
-	// chat, quick-create, and run-only autopilot runs.
+	// Sub-issue creation semantics — the only piece of the old Parent /
+	// Sub-issue Protocol (PR #2918) that still belongs in the brief. The
+	// parent-notification guidance was dropped in MUL-2538: the platform
+	// now posts a system comment on the parent itself when a child enters
+	// `done`, and the agent has nothing to do or avoid on that path.
+	// Section is skipped for chat, quick-create, and run-only autopilot
+	// runs (no parent/child semantics there).
 	if ctx.IssueID != "" && ctx.ChatSessionID == "" && ctx.QuickCreatePrompt == "" && ctx.AutopilotRunID == "" {
-		b.WriteString("## Parent / Sub-issue Protocol\n\n")
-		b.WriteString("Multica issues form a parent/child tree via `parent_issue_id`. The platform does NOT auto-sync child status to the parent. For the one transition that matters — a child entering `done` with an open parent — the platform posts a top-level system comment on the parent on your behalf, so the parent's assignee picks up the handoff. This is best-effort.\n\n")
-		b.WriteString("1. **Do NOT post your own parent-notification comment.** Finishing the child (final-results comment + status flip per the workflow above) is enough; the system comment on the parent fires from the status transition. A second comment from you on the parent will re-trigger the parent's assignee for nothing and was the noise source PR #2918 removed — skip it.\n")
-		b.WriteString("2. **Choosing `--status` when creating sub-issues.** `--status todo` = **start now** (the default — an agent assignee fires immediately). `--status backlog` = **wait** (assignee is set but no trigger fires; promote later with `multica issue status <child-id> todo`). Parallel children: all `--status todo`. Strict serial Step 1→2→3: only Step 1 is `todo`; Steps 2/3 are `--status backlog` from the start, promoted in turn.\n\n")
+		b.WriteString("## Sub-issue Creation\n\n")
+		b.WriteString("**Choosing `--status` when creating sub-issues.** `--status todo` = **start now** (the default — an agent assignee fires immediately). `--status backlog` = **wait** (assignee is set but no trigger fires; promote later with `multica issue status <child-id> todo`). Parallel children: all `--status todo`. Strict serial Step 1→2→3: only Step 1 is `todo`; Steps 2/3 are `--status backlog` from the start, promoted in turn.\n\n")
 	}
 
 	if len(ctx.AgentSkills) > 0 {
