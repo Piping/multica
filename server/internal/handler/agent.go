@@ -641,6 +641,7 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		isFirstAgent,
 	))
 
+	redactAgentResponseForActor(&resp, actorType)
 	writeJSON(w, http.StatusCreated, resp)
 }
 
@@ -654,11 +655,12 @@ type UpdateAgentRequest struct {
 	// custom_env is intentionally NOT updatable through this endpoint.
 	// Use `PUT /api/agents/{id}/env` for env changes — that path is
 	// owner/admin-only, denies agent actors, and writes a persisted
-	// audit log entry. Including `custom_env` here in the past meant any
-	// caller with owner/admin rights could overwrite secrets without an
-	// audit trail, and any client that round-tripped the previously-
-	// returned masked map back into a PUT body could silently overwrite
-	// real secret values with literal `****`. See MUL-2600.
+	// audit log entry. A `PUT /api/agents/{id}` body that carries
+	// `custom_env` is rejected with 400 in the handler below so a
+	// caller never believes they rotated a secret when the value is
+	// actually unchanged, and so a client that round-tripped a
+	// previously-returned masked map cannot silently overwrite real
+	// secret values with literal `****`. See MUL-2600.
 	CustomArgs         *[]string        `json:"custom_args"`
 	McpConfig          *json.RawMessage `json:"mcp_config"`
 	Visibility         *string          `json:"visibility"`
@@ -732,6 +734,19 @@ func redactMcpConfig(resp *AgentResponse) {
 	if resp.McpConfig != nil {
 		resp.McpConfig = nil
 		resp.McpConfigRedacted = true
+	}
+}
+
+// redactAgentResponseForActor strips secret-bearing fields from an agent
+// resource HTTP response when the request actor is an agent. Read
+// handlers already gate on actorType — mutation handlers
+// (create/update/archive/restore) must apply the same rule, otherwise
+// an agent with a host owner/admin token can do an unrelated mutation
+// (e.g. flip max_concurrent_tasks) on a target agent and harvest the
+// target's mcp_config from the mutation response. MUL-2600.
+func redactAgentResponseForActor(resp *AgentResponse, actorType string) {
+	if actorType == "agent" {
+		redactMcpConfig(resp)
 	}
 }
 
@@ -947,6 +962,7 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	userID := requestUserID(r)
 	actorType, actorID := h.resolveActor(r, userID, uuidToString(updated.WorkspaceID))
 	h.publish(protocol.EventAgentStatus, uuidToString(updated.WorkspaceID), actorType, actorID, map[string]any{"agent": broadcastAgentResponse(resp)})
+	redactAgentResponseForActor(&resp, actorType)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -1005,6 +1021,7 @@ func (h *Handler) ArchiveAgent(w http.ResponseWriter, r *http.Request) {
 	resp := agentToResponse(archived)
 	actorType, actorID := h.resolveActor(r, userID, wsID)
 	h.publish(protocol.EventAgentArchived, wsID, actorType, actorID, map[string]any{"agent": broadcastAgentResponse(resp)})
+	redactAgentResponseForActor(&resp, actorType)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -1035,6 +1052,7 @@ func (h *Handler) RestoreAgent(w http.ResponseWriter, r *http.Request) {
 	userID := requestUserID(r)
 	actorType, actorID := h.resolveActor(r, userID, wsID)
 	h.publish(protocol.EventAgentRestored, wsID, actorType, actorID, map[string]any{"agent": broadcastAgentResponse(resp)})
+	redactAgentResponseForActor(&resp, actorType)
 	writeJSON(w, http.StatusOK, resp)
 }
 

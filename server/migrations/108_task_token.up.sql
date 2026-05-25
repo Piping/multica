@@ -18,7 +18,7 @@ CREATE TABLE task_token (
     -- this token. user_id is the daemon owner (kept so member-shaped
     -- read access still resolves correctly when the agent does
     -- legitimate reads), agent_id and task_id are server-derived.
-    task_id UUID NOT NULL REFERENCES agent_task(id) ON DELETE CASCADE,
+    task_id UUID NOT NULL REFERENCES agent_task_queue(id) ON DELETE CASCADE,
     agent_id UUID NOT NULL REFERENCES agent(id) ON DELETE CASCADE,
     workspace_id UUID NOT NULL REFERENCES workspace(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,

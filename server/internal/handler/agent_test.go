@@ -683,6 +683,110 @@ func TestAgentResponseShape_HasNoLegacyEnvFields(t *testing.T) {
 	}
 }
 
+// TestUpdateAgent_RedactsMcpConfigForAgentActor closes the second leg
+// of MUL-2600 review #2: an agent process with a task token (or with
+// the X-Actor-Source server marker) must not be able to scrape another
+// agent's mcp_config via an unrelated mutation response. Even when the
+// host PAT would otherwise satisfy canManageAgent, the response body
+// must come back with mcp_config redacted.
+func TestUpdateAgent_RedactsMcpConfigForAgentActor(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+
+	// The target agent has a populated mcp_config that historically would
+	// be leaked back via the UpdateAgent / ArchiveAgent / RestoreAgent
+	// HTTP response.
+	target := createHandlerTestAgent(t, "mut-mcp-target", []byte(`{"server":"secret-config"}`))
+
+	// A second agent acts as the "calling" agent process whose task
+	// token authenticated the request. It is registered in the same
+	// workspace so resolveActor recognises X-Agent-ID as valid.
+	caller := createHandlerTestAgent(t, "mut-mcp-caller", nil)
+	taskID := insertHandlerTestTask(t, caller)
+
+	desc := "trivial mutation that should NOT leak target mcp_config"
+	req := newRequest(http.MethodPut, "/api/agents/"+target, map[string]any{
+		"description": desc,
+	})
+	req = withURLParam(req, "id", target)
+	// Simulate a task-token-authenticated agent request. The auth
+	// middleware would normally set these; we mimic both the modern
+	// path (X-Actor-Source) and the legacy header pair so the test is
+	// resilient to either resolveActor branch.
+	req.Header.Set("X-Actor-Source", "task_token")
+	req.Header.Set("X-Agent-ID", caller)
+	req.Header.Set("X-Task-ID", taskID)
+	w := httptest.NewRecorder()
+	testHandler.UpdateAgent(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("UpdateAgent: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp AgentResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.McpConfig != nil {
+		t.Errorf("UpdateAgent response leaked mcp_config to agent actor: %s", string(resp.McpConfig))
+	}
+	if !resp.McpConfigRedacted {
+		t.Errorf("UpdateAgent response should set mcp_config_redacted=true for agent actor")
+	}
+}
+
+// TestUpdateAgent_KeepsMcpConfigForMemberActor is the matching positive
+// test — a normal member request (owner/admin) still receives the full
+// mcp_config in the mutation response, so the redaction does not
+// accidentally regress the legitimate Web admin flow.
+func TestUpdateAgent_KeepsMcpConfigForMemberActor(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+
+	target := createHandlerTestAgent(t, "mut-mcp-member", []byte(`{"server":"member-visible"}`))
+
+	req := newRequest(http.MethodPut, "/api/agents/"+target, map[string]any{
+		"description": "owner-visible mutation",
+	})
+	req = withURLParam(req, "id", target)
+	w := httptest.NewRecorder()
+	testHandler.UpdateAgent(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("UpdateAgent: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp AgentResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.McpConfig == nil {
+		t.Errorf("UpdateAgent response should keep mcp_config for member actor; got nil")
+	}
+	if resp.McpConfigRedacted {
+		t.Errorf("UpdateAgent response should NOT mark mcp_config redacted for member actor")
+	}
+}
+
+// insertHandlerTestTask creates an in_progress task for the given
+// agent so resolveActor's GetAgentTask lookup succeeds without
+// dragging the full TaskService into the test.
+func insertHandlerTestTask(t *testing.T, agentID string) string {
+	t.Helper()
+	ctx := context.Background()
+	var taskID string
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO agent_task_queue (agent_id, runtime_id, status, priority)
+		VALUES ($1, $2, 'running', 0)
+		RETURNING id
+	`, agentID, handlerTestRuntimeID(t)).Scan(&taskID); err != nil {
+		t.Fatalf("insert test task: %v", err)
+	}
+	t.Cleanup(func() {
+		testPool.Exec(ctx, `DELETE FROM agent_task_queue WHERE id = $1`, taskID)
+	})
+	return taskID
+}
+
 // Defence-in-depth: spot-check that the package compiles a small
 // fmt.Sprintf so accidental imports stay tidy.
 var _ = fmt.Sprintf

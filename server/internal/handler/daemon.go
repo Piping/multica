@@ -1825,6 +1825,13 @@ func (h *Handler) FailTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Best-effort revoke of the mat_ task token minted at claim. Same
+	// rationale as CompleteTask — eager deletion shrinks the post-
+	// terminal window. The 24h expiry / cascade are the durable guards.
+	if err := h.Queries.DeleteTaskTokensByTask(r.Context(), task.ID); err != nil {
+		slog.Warn("fail task: failed to revoke task tokens", "task_id", uuidToString(task.ID), "error", err)
+	}
+
 	slog.Info("task failed", "task_id", taskID, "agent_id", uuidToString(task.AgentID), "task_error", req.Error, "failure_reason", req.FailureReason)
 	writeJSON(w, http.StatusOK, taskToResponse(*task))
 }

@@ -278,7 +278,8 @@ export interface UpdateAgentRequest {
    * request shape. Env edits flow through `client.updateAgentEnv` /
    * `PUT /api/agents/{id}/env` — that path is owner/admin only,
    * denies agent actors, and writes a persistent audit row. The
-   * UpdateAgent body silently ignores `custom_env` on the server.
+   * server REJECTS any `PUT /api/agents/{id}` body that includes
+   * `custom_env` with a 400; do not put the field in this payload.
    * MUL-2600.
    */
   custom_args?: string[];
