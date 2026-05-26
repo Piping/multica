@@ -456,11 +456,21 @@ func TestCodexRawErrorNotificationTerminal(t *testing.T) {
 
 	c, _, _ := newTestCodexClient(t)
 	c.notificationProtocol = "raw"
+	done := false
+	c.onTurnDone = func(aborted bool) {
+		if aborted {
+			t.Fatal("terminal error should not mark the turn aborted")
+		}
+		done = true
+	}
 
 	c.handleLine(`{"jsonrpc":"2.0","method":"error","params":{"error":{"message":"boom"},"willRetry":false}}`)
 
 	if got := c.getTurnError(); got != "boom" {
 		t.Fatalf("expected terminal error captured, got %q", got)
+	}
+	if !done {
+		t.Fatal("terminal error should finish the turn")
 	}
 }
 
@@ -1107,6 +1117,47 @@ func TestCodexExecuteTimesOutWhenTurnStopsAfterToolResult(t *testing.T) {
 	}
 }
 
+func TestCodexExecuteFirstTurnNoProgressSurfacesDiagnostics(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fixture is POSIX-only")
+	}
+
+	fakePath := writeFakeCodexAppServer(t, ""+
+		`read line`+"\n"+
+		`echo '{"jsonrpc":"2.0","id":1,"result":{}}'`+"\n"+
+		`read line`+"\n"+
+		`read line`+"\n"+
+		`echo '{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"thr-stuck"}}}'`+"\n"+
+		`read line`+"\n"+
+		`echo '{"jsonrpc":"2.0","id":3,"result":{}}'`+"\n"+
+		`echo '{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"thr-stuck","turn":{"id":"turn-stuck"}}}'`+"\n"+
+		`echo 'ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit' >&2`+"\n"+
+		`sleep 5`+"\n")
+
+	result := executeFakeCodex(t, fakePath, ExecOptions{
+		Timeout:                   5 * time.Second,
+		SemanticInactivityTimeout: 100 * time.Millisecond,
+	})
+	if result.Status != "timeout" {
+		t.Fatalf("expected timeout, got status=%q error=%q", result.Status, result.Error)
+	}
+	for _, want := range []string{
+		CodexFirstTurnNoProgressMarker,
+		"thr-stuck",
+		"turn-stuck",
+		`model="default(empty)"`,
+		`codex_version="codex-cli 0.0.0-test"`,
+		"model catalog refresh timed out",
+		"codex stderr:",
+		codexModelCatalogRefreshTimeoutSignal,
+	} {
+		if !strings.Contains(result.Error, want) {
+			t.Fatalf("expected error to contain %q, got %q", want, result.Error)
+		}
+	}
+}
+
 func TestCodexExecuteSemanticInactivityAllowsContinuousMessages(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
@@ -1156,7 +1207,6 @@ func TestCodexExecuteSemanticInactivityAllowsContinuousDeltaProgress(t *testing.
 		`read line`+"\n"+
 		`echo '{"jsonrpc":"2.0","id":3,"result":{}}'`+"\n"+
 		`echo '{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"thr-delta","turn":{"id":"turn-delta"}}}'`+"\n"+
-		`sleep 0.05`+"\n"+
 		`echo '{"jsonrpc":"2.0","method":"item/commandExecution/outputDelta","params":{"threadId":"thr-delta","item":{"type":"commandExecution","id":"cmd-1"},"delta":"line 1\n"}}'`+"\n"+
 		`sleep 0.05`+"\n"+
 		`echo '{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"thr-delta","item":{"type":"agentMessage","id":"msg-1"},"delta":"thinking"}}'`+"\n"+
@@ -1209,7 +1259,9 @@ func TestCodexExecuteSemanticInactivityDoesNotAffectNormalTurnCompletion(t *test
 func writeFakeCodexAppServer(t *testing.T, body string) string {
 	t.Helper()
 	fakePath := filepath.Join(t.TempDir(), "codex")
-	script := "#!/bin/sh\n" + body
+	script := "#!/bin/sh\n" +
+		`if [ "$1" = "--version" ]; then echo "codex-cli 0.0.0-test"; exit 0; fi` + "\n" +
+		body
 	writeTestExecutable(t, fakePath, []byte(script))
 	return fakePath
 }
