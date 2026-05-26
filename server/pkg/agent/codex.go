@@ -323,8 +323,6 @@ func (b *codexBackend) Execute(ctx context.Context, prompt string, opts ExecOpti
 					TurnID:       c.turnID,
 					Model:        opts.Model,
 				}
-				finalError = buildCodexTimeoutDiagnosticError(timeoutDiagnostic, "")
-				firstTurnNoProgressTimerC = nil
 				b.cfg.Logger.Warn(CodexFirstTurnNoProgressMarker,
 					"pid", cmd.Process.Pid,
 					"thread_id", threadID,
@@ -343,7 +341,6 @@ func (b *codexBackend) Execute(ctx context.Context, prompt string, opts ExecOpti
 					TurnID:       c.turnID,
 					Model:        opts.Model,
 				}
-				finalError = buildCodexTimeoutDiagnosticError(timeoutDiagnostic, "")
 				b.cfg.Logger.Warn(CodexSemanticInactivityMarker,
 					"pid", cmd.Process.Pid,
 					"thread_id", threadID,
@@ -553,7 +550,7 @@ func codexFirstTurnNoProgressTimeout(semanticInactivityTimeout time.Duration) ti
 }
 
 func isCodexFirstTurnProgressActivity(activity string) bool {
-	return activity != "" && activity != "status:running"
+	return strings.HasPrefix(activity, "item/") || activity == "error:terminal" || activity == "turn:completed"
 }
 
 func buildCodexTimeoutDiagnosticError(diag codexTimeoutDiagnostic, stderrTail string) string {
@@ -1068,7 +1065,11 @@ func (c *codexClient) handleRawNotification(method string, params map[string]any
 		if errMsg != "" {
 			c.cfg.Logger.Warn("codex error notification", "message", errMsg, "will_retry", willRetry)
 			if c.onSemanticActivity != nil {
-				c.onSemanticActivity("error")
+				if willRetry {
+					c.onSemanticActivity("error:retry")
+				} else {
+					c.onSemanticActivity("error:terminal")
+				}
 			}
 			if !willRetry {
 				c.setTurnError(errMsg)
