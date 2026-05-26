@@ -32,6 +32,7 @@ import { canAssignAgent } from "@multica/views/issues/components";
 import { api } from "@multica/core/api";
 import { useAgentPresenceDetail, useWorkspaceAgentAvailability } from "@multica/core/agents";
 import { useFileUpload } from "@multica/core/hooks/use-file-upload";
+import { UnicodeSpinner } from "@multica/ui/components/common/unicode-spinner";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { OfflineBanner } from "./offline-banner";
 import { NoAgentBanner } from "./no-agent-banner";
@@ -850,14 +851,18 @@ function SessionDropdown({
           <span
             aria-label={t(($) => $.window.running)}
             title={t(($) => $.window.running)}
-            className="size-1.5 shrink-0 rounded-full bg-amber-500 animate-pulse"
-          />
+            className="shrink-0"
+          >
+            <UnicodeSpinner name="breathe" className="text-muted-foreground text-sm" />
+          </span>
         ) : !isRenaming && session.has_unread ? (
           <span
             aria-label={t(($) => $.window.unread)}
             title={t(($) => $.window.unread)}
-            className="size-1.5 shrink-0 rounded-full bg-brand"
-          />
+            className="shrink-0"
+          >
+            <Check className="size-3.5 text-brand" />
+          </span>
         ) : null}
         {!isRenaming && isCurrent && (
           <Check className="size-3.5 text-muted-foreground shrink-0" />
@@ -885,6 +890,7 @@ function SessionDropdown({
             </button>
             <button
               type="button"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
@@ -919,14 +925,18 @@ function SessionDropdown({
             <span
               aria-label={t(($) => $.window.another_running)}
               title={t(($) => $.window.another_running)}
-              className="size-1.5 shrink-0 rounded-full bg-amber-500 animate-pulse"
-            />
+              className="shrink-0"
+            >
+              <UnicodeSpinner name="breathe" className="text-muted-foreground text-sm" />
+            </span>
           ) : otherSessionUnread ? (
             <span
               aria-label={t(($) => $.window.another_unread)}
               title={t(($) => $.window.another_unread)}
-              className="size-1.5 shrink-0 rounded-full bg-brand"
-            />
+              className="shrink-0"
+            >
+              <Check className="size-3.5 text-brand" />
+            </span>
           ) : null}
           <ChevronDown className="size-3 text-muted-foreground shrink-0" />
         </DropdownMenuTrigger>
