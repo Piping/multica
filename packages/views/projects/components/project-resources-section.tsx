@@ -469,9 +469,10 @@ function LocalDirectoryRow({
   const isForeignDaemon =
     localDaemonId !== null && ref.daemon_id !== localDaemonId;
   const isLocalUnknown = localDaemonId === null;
-  // "disabled" in the spec sense — visual de-emphasis + no chat hint. Delete
-  // is still allowed: the user may want to drop a stale registration from
-  // any device.
+  // "disabled" in the spec sense — visual de-emphasis + no chat hint, and
+  // rename is hidden on foreign / unknown-daemon rows because the label
+  // belongs to the owning device. Delete stays available so the user can
+  // drop a stale registration from any device.
   const mismatch = isForeignDaemon || isLocalUnknown;
 
   const [editing, setEditing] = useState(false);
@@ -536,7 +537,7 @@ function LocalDirectoryRow({
           </TooltipContent>
         </Tooltip>
       )}
-      {canEdit && !editing && (
+      {canEdit && !mismatch && !editing && (
         <button
           type="button"
           onClick={startEdit}
