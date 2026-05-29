@@ -19,6 +19,7 @@ import {
   Inbox,
   ListTodo,
   Bot,
+  MessageSquare,
   Monitor,
   ChevronDown,
   ChevronRight,
@@ -105,6 +106,7 @@ const EMPTY_INBOX: Awaited<ReturnType<typeof api.listInbox>> = [];
 // against the current workspace slug at render time (see AppSidebar body).
 // Only parameterless paths are valid nav destinations.
 type NavKey =
+  | "chat"
   | "inbox"
   | "myIssues"
   | "issues"
@@ -119,6 +121,7 @@ type NavKey =
 
 // Static schema (key + icon) — labels resolved at render via useT("layout").
 type NavLabelKey =
+  | "chat"
   | "inbox"
   | "my_issues"
   | "issues"
@@ -132,6 +135,7 @@ type NavLabelKey =
   | "settings";
 
 const personalNav: { key: NavKey; labelKey: NavLabelKey; icon: typeof Inbox }[] = [
+  { key: "chat", labelKey: "chat", icon: MessageSquare },
   { key: "inbox", labelKey: "inbox", icon: Inbox },
   { key: "myIssues", labelKey: "my_issues", icon: CircleUser },
 ];

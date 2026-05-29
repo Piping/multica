@@ -99,6 +99,7 @@ vi.mock("@multica/core", () => ({
 
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
+    chat: () => "/ws-test/chat",
     inbox: () => "/ws-test/inbox",
     myIssues: () => "/ws-test/my-issues",
     issues: () => "/ws-test/issues",

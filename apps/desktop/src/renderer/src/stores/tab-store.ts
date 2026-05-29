@@ -120,6 +120,7 @@ interface TabStore {
 // ---------------------------------------------------------------------------
 
 const ROUTE_ICONS: Record<string, string> = {
+  chat: "MessageSquare",
   inbox: "Inbox",
   "my-issues": "CircleUser",
   issues: "ListTodo",

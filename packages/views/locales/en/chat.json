@@ -47,6 +47,13 @@
       "confirming": "Deleting..."
     }
   },
+  "page": {
+    "sessions_title": "Chats",
+    "show_sessions": "Show chats",
+    "hide_sessions": "Hide chats",
+    "agent_picker_hint": "New chats start with this agent",
+    "archived_badge": "Archived"
+  },
   "window": {
     "new_chat_tooltip": "New chat",
     "restore_tooltip": "Restore",

@@ -163,7 +163,7 @@ export function DesktopNavigationProvider({
   const { tabId: activeTabId } = useActiveTabIdentity();
   const router = useActiveTabRouter();
   // Mirror the active tab router's full location (pathname + search) so
-  // shell-level consumers of useNavigation() — ChatWindow in particular —
+  // shell-level consumers of useNavigation() — the shared chat UI in particular —
   // can read URL search params. Must stay in sync with TabNavigationProvider
   // below; a partial shape here (just pathname) silently broke focus-mode
   // anchor resolution on `/inbox?issue=…`.
