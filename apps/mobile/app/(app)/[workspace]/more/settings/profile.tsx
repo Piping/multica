@@ -12,7 +12,6 @@
  */
 import { useEffect, useState } from "react";
 import {
-  ActionSheetIOS,
   Alert,
   ActivityIndicator,
   Pressable,
@@ -28,6 +27,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuthStore } from "@/data/auth-store";
 import { api } from "@/data/api";
 import type { FileAsset } from "@/data/api";
+import { showActionMenu } from "@/lib/action-menu";
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024; // 5 MB — matches what's reasonable on cellular.
 
@@ -59,24 +59,20 @@ export default function ProfileSettingsScreen() {
   const dirty = name.trim() !== (user?.name ?? "") && name.trim().length > 0;
 
   const handleAvatarPick = () => {
-    const options = ["Take Photo", "Choose from Library", "Remove Photo", "Cancel"];
-    const removeIndex = user?.avatar_url ? 2 : -1;
-    const cancelIndex = user?.avatar_url ? 3 : 2;
-    const visibleOptions = user?.avatar_url ? options : options.filter((_, i) => i !== 2);
-
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: visibleOptions,
-        cancelButtonIndex: cancelIndex,
-        destructiveButtonIndex: removeIndex >= 0 ? removeIndex : undefined,
-      },
-      async (index) => {
-        if (index === cancelIndex) return;
-        if (index === 0) await pickFromCamera();
-        else if (index === 1) await pickFromLibrary();
-        else if (index === removeIndex) await removeAvatar();
-      },
-    );
+    void (async () => {
+      const action = await showActionMenu({
+        options: [
+          { key: "camera", label: "Take Photo" },
+          { key: "library", label: "Choose from Library" },
+          ...(user?.avatar_url
+            ? [{ key: "remove", label: "Remove Photo", destructive: true }]
+            : []),
+        ],
+      });
+      if (action === "camera") await pickFromCamera();
+      else if (action === "library") await pickFromLibrary();
+      else if (action === "remove") await removeAvatar();
+    })();
   };
 
   const pickFromCamera = async () => {

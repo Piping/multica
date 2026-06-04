@@ -19,9 +19,10 @@
  *     server back-fills `chat_message_id` on each row when the message
  *     persists (server-side). `MessageComposer` calls `api.uploadFile`
  *     without `{ issueId, commentId }`.
- *   - **Parent owns keyboard**: chat.tsx wraps in KeyboardAvoidingView +
- *     SafeAreaView, so `manageKeyboard={false}` prevents the composer
- *     from double-stacking its own keyboard handling.
+ *   - **Shared keyboard lift**: chat now uses the same
+ *     `KeyboardStickyView`-backed keyboard handling as the inline issue
+ *     composer, which is more reliable on Android than depending on the
+ *     screen-level KeyboardAvoidingView path.
  *
  * Previously a hand-written 400-LOC twin of inline-comment-composer.tsx;
  * now ~50 LOC plus the StopButton subcomponent.
@@ -114,7 +115,6 @@ export function ChatComposer({
       disabledReason={disabledReason}
       isSending={sending}
       renderStop={() => <StopButton onPress={handleStop} />}
-      manageKeyboard={false}
     />
   );
 }

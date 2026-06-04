@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -8,9 +9,11 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/analytics"
+	"github.com/multica-ai/multica/server/internal/events"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -389,6 +392,212 @@ type SendChatMessageResponse struct {
 	CreatedAt string `json:"created_at"`
 }
 
+var errNoLastChatTurn = errors.New("no last chat turn")
+
+type lastChatTurn struct {
+	User            db.ChatMessage
+	TrailingReplies []db.ChatMessage
+}
+
+func (t lastChatTurn) deleteAllIDs() []pgtype.UUID {
+	ids := make([]pgtype.UUID, 0, 1+len(t.TrailingReplies))
+	ids = append(ids, t.User.ID)
+	for _, msg := range t.TrailingReplies {
+		ids = append(ids, msg.ID)
+	}
+	return ids
+}
+
+func (t lastChatTurn) deleteReplyIDs() []pgtype.UUID {
+	if len(t.TrailingReplies) == 0 {
+		return nil
+	}
+	ids := make([]pgtype.UUID, 0, len(t.TrailingReplies))
+	for _, msg := range t.TrailingReplies {
+		ids = append(ids, msg.ID)
+	}
+	return ids
+}
+
+func (t lastChatTurn) lastReplyTaskID() (pgtype.UUID, bool) {
+	if len(t.TrailingReplies) == 0 {
+		return pgtype.UUID{}, false
+	}
+	last := t.TrailingReplies[len(t.TrailingReplies)-1]
+	if !last.TaskID.Valid {
+		return pgtype.UUID{}, false
+	}
+	return last.TaskID, true
+}
+
+func loadLastChatTurn(ctx context.Context, q *db.Queries, sessionID pgtype.UUID) (lastChatTurn, error) {
+	messages, err := q.ListChatMessages(ctx, sessionID)
+	if err != nil {
+		return lastChatTurn{}, err
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != "user" {
+			continue
+		}
+		trailing := append([]db.ChatMessage(nil), messages[i+1:]...)
+		return lastChatTurn{
+			User:            messages[i],
+			TrailingReplies: trailing,
+		}, nil
+	}
+	return lastChatTurn{}, errNoLastChatTurn
+}
+
+func rewindChatSessionBeforeTask(ctx context.Context, q *db.Queries, sessionID, taskID pgtype.UUID) error {
+	prior, err := q.GetPreviousChatTaskSession(ctx, db.GetPreviousChatTaskSessionParams{
+		ChatSessionID: sessionID,
+		ID:            taskID,
+	})
+	switch {
+	case err == nil:
+		return q.ReplaceChatSessionSession(ctx, db.ReplaceChatSessionSessionParams{
+			ID:        sessionID,
+			SessionID: prior.SessionID,
+			WorkDir:   prior.WorkDir,
+			RuntimeID: prior.RuntimeID,
+		})
+	case errors.Is(err, pgx.ErrNoRows):
+		return q.ReplaceChatSessionSession(ctx, db.ReplaceChatSessionSessionParams{
+			ID: sessionID,
+		})
+	default:
+		return err
+	}
+}
+
+func cloneChatAttachments(
+	ctx context.Context,
+	q *db.Queries,
+	workspaceID pgtype.UUID,
+	message db.ChatMessage,
+) ([]pgtype.UUID, error) {
+	attachments, err := q.ListAttachmentsByChatMessage(ctx, db.ListAttachmentsByChatMessageParams{
+		ChatMessageID: message.ID,
+		WorkspaceID:   workspaceID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(attachments) == 0 {
+		return nil, nil
+	}
+
+	clonedIDs := make([]pgtype.UUID, 0, len(attachments))
+	for _, att := range attachments {
+		id, err := uuid.NewV7()
+		if err != nil {
+			return nil, err
+		}
+		cloned, err := q.CreateAttachment(ctx, db.CreateAttachmentParams{
+			ID:            pgtype.UUID{Bytes: id, Valid: true},
+			WorkspaceID:   att.WorkspaceID,
+			UploaderType:  att.UploaderType,
+			UploaderID:    att.UploaderID,
+			Filename:      att.Filename,
+			Url:           att.Url,
+			ContentType:   att.ContentType,
+			SizeBytes:     att.SizeBytes,
+			ChatSessionID: att.ChatSessionID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		clonedIDs = append(clonedIDs, cloned.ID)
+	}
+
+	return clonedIDs, nil
+}
+
+func enqueueChatTaskTx(ctx context.Context, q *db.Queries, session db.ChatSession) (db.AgentTaskQueue, error) {
+	agent, err := q.GetAgent(ctx, session.AgentID)
+	if err != nil {
+		return db.AgentTaskQueue{}, err
+	}
+	if agent.ArchivedAt.Valid {
+		return db.AgentTaskQueue{}, errors.New("agent is archived")
+	}
+	if !agent.RuntimeID.Valid {
+		return db.AgentTaskQueue{}, errors.New("agent has no runtime")
+	}
+
+	return q.CreateChatTask(ctx, db.CreateChatTaskParams{
+		AgentID:       session.AgentID,
+		RuntimeID:     agent.RuntimeID,
+		Priority:      2,
+		ChatSessionID: session.ID,
+	})
+}
+
+func (h *Handler) publishQueuedChatTask(workspaceID string, task db.AgentTaskQueue) {
+	payload := map[string]any{
+		"task_id":         uuidToString(task.ID),
+		"agent_id":        uuidToString(task.AgentID),
+		"issue_id":        uuidToString(task.IssueID),
+		"status":          task.Status,
+		"chat_session_id": uuidToString(task.ChatSessionID),
+	}
+	h.Bus.Publish(events.Event{
+		Type:        protocol.EventTaskQueued,
+		WorkspaceID: workspaceID,
+		ActorType:   "system",
+		ActorID:     "",
+		Payload:     payload,
+	})
+}
+
+func (h *Handler) finalizeLastChatTurnMutation(
+	ctx context.Context,
+	workspaceID string,
+	session db.ChatSession,
+	userID string,
+	cancelled []db.AgentTaskQueue,
+	task *db.AgentTaskQueue,
+	userMessage *db.ChatMessage,
+) {
+	if len(cancelled) > 0 {
+		h.TaskService.BroadcastCancelledTasks(ctx, cancelled)
+	}
+
+	resolvedSessionID := uuidToString(session.ID)
+	h.publishChat(protocol.EventChatSessionUpdated, workspaceID, "member", userID, resolvedSessionID, protocol.ChatSessionUpdatedPayload{
+		ChatSessionID: resolvedSessionID,
+	})
+
+	if task == nil {
+		return
+	}
+
+	h.publishQueuedChatTask(workspaceID, *task)
+	h.TaskService.NotifyTaskEnqueued(ctx, *task)
+
+	taskContext := h.TaskService.AnalyticsContextForTask(ctx, *task)
+	h.Analytics.Capture(analytics.ChatMessageSent(
+		userID,
+		workspaceID,
+		resolvedSessionID,
+		uuidToString(task.ID),
+		uuidToString(session.AgentID),
+		taskContext.RuntimeMode,
+		taskContext.Provider,
+	))
+
+	if userMessage != nil {
+		h.publishChat(protocol.EventChatMessage, workspaceID, "member", userID, resolvedSessionID, protocol.ChatMessagePayload{
+			ChatSessionID: resolvedSessionID,
+			MessageID:     uuidToString(userMessage.ID),
+			Role:          "user",
+			Content:       userMessage.Content,
+			TaskID:        uuidToString(task.ID),
+			CreatedAt:     timestampToString(userMessage.CreatedAt),
+		})
+	}
+}
+
 func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	userID, ok := requireUserID(w, r)
 	if !ok {
@@ -493,6 +702,287 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:     timestampToString(msg.CreatedAt),
 	})
 
+	writeJSON(w, http.StatusCreated, SendChatMessageResponse{
+		MessageID: uuidToString(msg.ID),
+		TaskID:    uuidToString(task.ID),
+		CreatedAt: timestampToString(task.CreatedAt),
+	})
+}
+
+// WithdrawLastChatMessage removes the latest user turn from a session.
+// If a task is still running for that turn, it is cancelled first.
+func (h *Handler) WithdrawLastChatMessage(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := ctxWorkspaceID(r.Context())
+	sessionID := chi.URLParam(r, "sessionId")
+
+	session, ok := h.gateChatSessionForUser(w, r, userID, workspaceID, sessionID)
+	if !ok {
+		return
+	}
+	if session.Status != "active" {
+		writeError(w, http.StatusBadRequest, "chat session is archived")
+		return
+	}
+
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+
+	if _, err := qtx.LockChatSessionForDelete(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock chat session")
+		return
+	}
+
+	turn, err := loadLastChatTurn(r.Context(), qtx, session.ID)
+	if errors.Is(err, errNoLastChatTurn) {
+		writeError(w, http.StatusConflict, "no chat message to withdraw")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load chat messages")
+		return
+	}
+
+	cancelled, err := qtx.CancelAgentTasksByChatSession(r.Context(), session.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to cancel chat tasks")
+		return
+	}
+
+	if taskID, ok := turn.lastReplyTaskID(); ok {
+		if err := rewindChatSessionBeforeTask(r.Context(), qtx, session.ID, taskID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to rewind chat session")
+			return
+		}
+	}
+
+	if err := qtx.DeleteChatMessagesByIDs(r.Context(), turn.deleteAllIDs()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete chat messages")
+		return
+	}
+	if err := qtx.MarkChatSessionRead(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear chat unread state")
+		return
+	}
+	if err := qtx.TouchChatSession(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to touch chat session")
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit chat message withdrawal")
+		return
+	}
+
+	h.finalizeLastChatTurnMutation(r.Context(), workspaceID, session, userID, cancelled, nil, nil)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// RegenerateLastChatMessage removes the latest assistant reply (if present),
+// rewinds the resume pointer to the prior turn, and re-enqueues the same
+// latest user message.
+func (h *Handler) RegenerateLastChatMessage(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := ctxWorkspaceID(r.Context())
+	sessionID := chi.URLParam(r, "sessionId")
+
+	session, ok := h.gateChatSessionForUser(w, r, userID, workspaceID, sessionID)
+	if !ok {
+		return
+	}
+	if session.Status != "active" {
+		writeError(w, http.StatusBadRequest, "chat session is archived")
+		return
+	}
+
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+
+	if _, err := qtx.LockChatSessionForDelete(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock chat session")
+		return
+	}
+
+	turn, err := loadLastChatTurn(r.Context(), qtx, session.ID)
+	if errors.Is(err, errNoLastChatTurn) {
+		writeError(w, http.StatusConflict, "no chat message to regenerate")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load chat messages")
+		return
+	}
+
+	cancelled, err := qtx.CancelAgentTasksByChatSession(r.Context(), session.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to cancel chat tasks")
+		return
+	}
+
+	if taskID, ok := turn.lastReplyTaskID(); ok {
+		if err := rewindChatSessionBeforeTask(r.Context(), qtx, session.ID, taskID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to rewind chat session")
+			return
+		}
+	}
+
+	if replyIDs := turn.deleteReplyIDs(); len(replyIDs) > 0 {
+		if err := qtx.DeleteChatMessagesByIDs(r.Context(), replyIDs); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to delete assistant reply")
+			return
+		}
+	}
+
+	task, err := enqueueChatTaskTx(r.Context(), qtx, session)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to enqueue chat task: "+err.Error())
+		return
+	}
+	if err := qtx.MarkChatSessionRead(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear chat unread state")
+		return
+	}
+	if err := qtx.TouchChatSession(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to touch chat session")
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit chat regeneration")
+		return
+	}
+
+	h.finalizeLastChatTurnMutation(r.Context(), workspaceID, session, userID, cancelled, &task, nil)
+	writeJSON(w, http.StatusCreated, SendChatMessageResponse{
+		MessageID: uuidToString(turn.User.ID),
+		TaskID:    uuidToString(task.ID),
+		CreatedAt: timestampToString(task.CreatedAt),
+	})
+}
+
+// ResendLastChatMessage removes the latest user turn, recreates the same user
+// message (including cloned attachments), then enqueues a fresh reply task.
+func (h *Handler) ResendLastChatMessage(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := ctxWorkspaceID(r.Context())
+	sessionID := chi.URLParam(r, "sessionId")
+
+	session, ok := h.gateChatSessionForUser(w, r, userID, workspaceID, sessionID)
+	if !ok {
+		return
+	}
+	if session.Status != "active" {
+		writeError(w, http.StatusBadRequest, "chat session is archived")
+		return
+	}
+
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+
+	if _, err := qtx.LockChatSessionForDelete(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock chat session")
+		return
+	}
+
+	turn, err := loadLastChatTurn(r.Context(), qtx, session.ID)
+	if errors.Is(err, errNoLastChatTurn) {
+		writeError(w, http.StatusConflict, "no chat message to resend")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load chat messages")
+		return
+	}
+
+	clonedAttachmentIDs, err := cloneChatAttachments(r.Context(), qtx, session.WorkspaceID, turn.User)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clone chat attachments")
+		return
+	}
+
+	cancelled, err := qtx.CancelAgentTasksByChatSession(r.Context(), session.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to cancel chat tasks")
+		return
+	}
+
+	if taskID, ok := turn.lastReplyTaskID(); ok {
+		if err := rewindChatSessionBeforeTask(r.Context(), qtx, session.ID, taskID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to rewind chat session")
+			return
+		}
+	}
+
+	if err := qtx.DeleteChatMessagesByIDs(r.Context(), turn.deleteAllIDs()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete chat messages")
+		return
+	}
+
+	msg, err := qtx.CreateChatMessage(r.Context(), db.CreateChatMessageParams{
+		ChatSessionID: session.ID,
+		Role:          "user",
+		Content:       turn.User.Content,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to recreate chat message")
+		return
+	}
+
+	if len(clonedAttachmentIDs) > 0 {
+		if err := qtx.LinkAttachmentsToChatMessage(r.Context(), db.LinkAttachmentsToChatMessageParams{
+			ChatMessageID: msg.ID,
+			ChatSessionID: session.ID,
+			Column3:       clonedAttachmentIDs,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to relink chat attachments")
+			return
+		}
+	}
+
+	task, err := enqueueChatTaskTx(r.Context(), qtx, session)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to enqueue chat task: "+err.Error())
+		return
+	}
+	if err := qtx.MarkChatSessionRead(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear chat unread state")
+		return
+	}
+	if err := qtx.TouchChatSession(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to touch chat session")
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit chat resend")
+		return
+	}
+
+	h.finalizeLastChatTurnMutation(r.Context(), workspaceID, session, userID, cancelled, &task, &msg)
 	writeJSON(w, http.StatusCreated, SendChatMessageResponse{
 		MessageID: uuidToString(msg.ID),
 		TaskID:    uuidToString(task.ID),

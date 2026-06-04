@@ -21,11 +21,12 @@
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   View,
 } from "react-native";
-import { Image as ExpoImage } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { Workspace } from "@multica/core/types";
@@ -52,7 +53,8 @@ export default function SwitchWorkspaceRoute() {
         {
           text: "切换",
           onPress: () => {
-            router.dismiss();
+            if (Platform.OS === "ios") router.dismiss();
+            else router.back();
             router.replace(`/${ws.slug}/inbox`);
           },
         },
@@ -116,10 +118,10 @@ function WorkspaceRow({
         active && "opacity-100",
       )}
     >
-      <ExpoImage
-        source="sf:building.2"
-        tintColor={active ? iconTint : mutedIconTint}
-        style={{ width: 18, height: 18 }}
+      <Ionicons
+        name="business-outline"
+        color={active ? iconTint : mutedIconTint}
+        size={18}
       />
       <Text
         className={cn(
@@ -131,11 +133,7 @@ function WorkspaceRow({
         {workspace.name}
       </Text>
       {active ? (
-        <ExpoImage
-          source="sf:checkmark"
-          tintColor={iconTint}
-          style={{ width: 16, height: 16 }}
-        />
+        <Ionicons name="checkmark" color={iconTint} size={16} />
       ) : null}
     </Pressable>
   );

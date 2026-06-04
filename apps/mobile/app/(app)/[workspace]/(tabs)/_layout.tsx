@@ -22,8 +22,8 @@
  */
 import { useRef } from "react";
 import { Tabs } from "expo-router";
-import { Image } from "expo-image";
 import { View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import type { TriggerRef } from "@rn-primitives/dropdown-menu";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
@@ -82,10 +82,10 @@ export default function TabsLayout() {
             tabBarBadge: inboxBadge,
             tabBarBadgeStyle: BADGE_STYLE,
             tabBarIcon: ({ color, size, focused }) => (
-              <Image
-                source={focused ? "sf:tray.fill" : "sf:tray"}
-                tintColor={color}
-                style={{ width: size, height: size }}
+              <Ionicons
+                name={focused ? "file-tray" : "file-tray-outline"}
+                color={color}
+                size={size}
               />
             ),
           }}
@@ -95,10 +95,10 @@ export default function TabsLayout() {
           options={{
             title: "My Issues",
             tabBarIcon: ({ color, size, focused }) => (
-              <Image
-                source={focused ? "sf:checklist" : "sf:checklist.unchecked"}
-                tintColor={color}
-                style={{ width: size, height: size }}
+              <Ionicons
+                name={focused ? "list" : "list-outline"}
+                color={color}
+                size={size}
               />
             ),
           }}
@@ -110,10 +110,10 @@ export default function TabsLayout() {
             tabBarBadge: chatBadge,
             tabBarBadgeStyle: BADGE_STYLE,
             tabBarIcon: ({ color, size, focused }) => (
-              <Image
-                source={focused ? "sf:bubble.left.fill" : "sf:bubble.left"}
-                tintColor={color}
-                style={{ width: size, height: size }}
+              <Ionicons
+                name={focused ? "chatbubble" : "chatbubble-outline"}
+                color={color}
+                size={size}
               />
             ),
           }}
@@ -123,10 +123,10 @@ export default function TabsLayout() {
           options={{
             title: "More",
             tabBarIcon: ({ color, size }) => (
-              <Image
-                source="sf:ellipsis"
-                tintColor={color}
-                style={{ width: size, height: size }}
+              <Ionicons
+                name="ellipsis-horizontal"
+                color={color}
+                size={size}
               />
             ),
           }}

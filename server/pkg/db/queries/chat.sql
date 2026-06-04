@@ -46,6 +46,16 @@ SET session_id = COALESCE(sqlc.narg('session_id'), session_id),
     updated_at = now()
 WHERE id = sqlc.arg('id');
 
+-- name: ReplaceChatSessionSession :exec
+-- Overwrites the chat_session resume pointer, including clearing it back to
+-- NULL when a last-turn rewind removes the most recent assistant output.
+UPDATE chat_session
+SET session_id = sqlc.narg('session_id'),
+    work_dir = sqlc.narg('work_dir'),
+    runtime_id = sqlc.narg('runtime_id'),
+    updated_at = now()
+WHERE id = sqlc.arg('id');
+
 -- name: LockChatSessionForDelete :one
 -- Acquires an exclusive (FOR UPDATE) row lock on chat_session(id). Used by
 -- the delete path so that a concurrent SendChatMessage cannot enqueue a new
@@ -114,6 +124,25 @@ WHERE chat_session_id = $1
 ORDER BY completed_at DESC
 LIMIT 1;
 
+-- name: GetPreviousChatTaskSession :one
+-- Same filter as GetLastChatTaskSession, but excludes one known task row so
+-- the chat "undo/regenerate last turn" flow can rewind to the prior resume
+-- pointer instead of reusing the one produced by the just-removed reply.
+SELECT session_id, work_dir, runtime_id FROM agent_task_queue
+WHERE chat_session_id = $1
+  AND id <> $2
+  AND (
+    status = 'completed'
+    OR (
+      status = 'failed'
+      AND COALESCE(failure_reason, '') NOT IN ('iteration_limit', 'agent_fallback_message', 'api_invalid_request', 'codex_semantic_inactivity')
+      AND NOT (COALESCE(error, '') ILIKE '%400%' AND COALESCE(error, '') ILIKE '%invalid_request_error%')
+    )
+  )
+  AND session_id IS NOT NULL
+ORDER BY completed_at DESC
+LIMIT 1;
+
 -- name: GetPendingChatTask :one
 -- Returns the most recent in-flight task for a chat session, if any.
 -- Used by the frontend to recover pending state after refresh / reopen.
@@ -141,6 +170,10 @@ ORDER BY atq.created_at DESC;
 -- Clears unread_since, dropping the session's unread count to 0.
 UPDATE chat_session SET unread_since = NULL
 WHERE id = $1;
+
+-- name: DeleteChatMessagesByIDs :exec
+DELETE FROM chat_message
+WHERE id = ANY($1::uuid[]);
 
 -- name: SetUnreadSinceIfNull :exec
 -- Atomically stamps the first unread assistant message's arrival time.

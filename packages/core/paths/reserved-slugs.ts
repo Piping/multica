@@ -63,6 +63,7 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "press",
   "download",
   "usecases",
+  "offline",
 
   // Account / billing (likely-future global routes in the avatar menu)
   "profile",
@@ -147,6 +148,11 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "robots.txt",
   "sitemap.xml",
   "manifest.json",
+  "manifest.webmanifest",
+  "sw.js",
+  "apple-touch-icon.png",
+  "icon-192.png",
+  "icon-512.png",
   ".well-known",
 ]);
 

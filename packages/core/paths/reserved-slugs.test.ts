@@ -27,4 +27,10 @@ describe("reserved slugs", () => {
   it("matches slugs case-sensitively", () => {
     expect(isReservedSlug("Login")).toBe(false);
   });
+
+  it("reserves top-level PWA routes and assets", () => {
+    expect(isReservedSlug("offline")).toBe(true);
+    expect(isReservedSlug("manifest.webmanifest")).toBe(true);
+    expect(isReservedSlug("sw.js")).toBe(true);
+  });
 });

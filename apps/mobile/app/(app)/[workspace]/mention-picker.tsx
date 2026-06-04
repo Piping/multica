@@ -18,6 +18,7 @@
  */
 import { useLocalSearchParams } from "expo-router";
 import { MentionPickerBody } from "@/components/issue/pickers/mention-picker-body";
+import { SearchablePickerScreen } from "@/components/ui/searchable-picker-screen";
 import { useNativeSearchBar } from "@/lib/use-native-search-bar";
 
 type Mode = "comment" | "chat";
@@ -27,6 +28,18 @@ export default function MentionPickerRoute() {
   const mode: Mode = rawMode === "chat" ? "chat" : "comment";
   const placeholder =
     mode === "chat" ? "Reference an issue" : "Search people or issues";
-  const query = useNativeSearchBar(placeholder, { autoFocus: true });
-  return <MentionPickerBody mode={mode} query={query} />;
+  const { query, setQuery, isInlineSearch } = useNativeSearchBar(placeholder, {
+    autoFocus: true,
+  });
+  return (
+    <SearchablePickerScreen
+      inlineSearch={isInlineSearch}
+      query={query}
+      setQuery={setQuery}
+      placeholder={placeholder}
+      autoFocus
+    >
+      <MentionPickerBody mode={mode} query={query} />
+    </SearchablePickerScreen>
+  );
 }

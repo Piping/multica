@@ -44,4 +44,10 @@ make test             # Go tests
 make check            # Full verification pipeline
 ```
 
+### Deployment Workflow
+
+- After any code change, rebuild the Docker image(s) and update the currently running service(s) before considering the task complete.
+- Default command: `bash scripts/redeploy-selfhost-dev.sh`
+- Prefer this script over ad hoc Docker commands. Only bypass it when debugging the redeploy flow itself.
+
 See CLAUDE.md for the complete command reference.

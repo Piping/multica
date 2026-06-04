@@ -12,6 +12,7 @@
 import { create } from "zustand";
 import type { User } from "@multica/core/types";
 import { api, ApiError } from "./api";
+import { useBackendStore } from "./backend-config";
 import { clearToken, getToken, setToken } from "./secure-storage";
 import { useWorkspaceStore } from "./workspace-store";
 
@@ -32,9 +33,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
 
   initialize: async () => {
-    // Restore the persisted workspace slug alongside the auth token so the
+    // Restore backend selection before ANY network request fires, then
+    // restore the persisted workspace slug alongside the auth token so the
     // entry redirect (app/index.tsx) can route directly to the last-used
     // workspace without flashing /select-workspace.
+    await useBackendStore.getState().restore();
     await useWorkspaceStore.getState().restoreSlug();
 
     const token = await getToken();

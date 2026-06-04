@@ -139,6 +139,16 @@ func (q *Queries) CreateChatTask(ctx context.Context, arg CreateChatTaskParams) 
 	return i, err
 }
 
+const deleteChatMessagesByIDs = `-- name: DeleteChatMessagesByIDs :exec
+DELETE FROM chat_message
+WHERE id = ANY($1::uuid[])
+`
+
+func (q *Queries) DeleteChatMessagesByIDs(ctx context.Context, dollar_1 []pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteChatMessagesByIDs, dollar_1)
+	return err
+}
+
 const deleteChatSession = `-- name: DeleteChatSession :exec
 DELETE FROM chat_session WHERE id = $1 AND workspace_id = $2
 `
@@ -295,6 +305,44 @@ func (q *Queries) GetPendingChatTask(ctx context.Context, chatSessionID pgtype.U
 	row := q.db.QueryRow(ctx, getPendingChatTask, chatSessionID)
 	var i GetPendingChatTaskRow
 	err := row.Scan(&i.ID, &i.Status, &i.CreatedAt)
+	return i, err
+}
+
+const getPreviousChatTaskSession = `-- name: GetPreviousChatTaskSession :one
+SELECT session_id, work_dir, runtime_id FROM agent_task_queue
+WHERE chat_session_id = $1
+  AND id <> $2
+  AND (
+    status = 'completed'
+    OR (
+      status = 'failed'
+      AND COALESCE(failure_reason, '') NOT IN ('iteration_limit', 'agent_fallback_message', 'api_invalid_request', 'codex_semantic_inactivity')
+      AND NOT (COALESCE(error, '') ILIKE '%400%' AND COALESCE(error, '') ILIKE '%invalid_request_error%')
+    )
+  )
+  AND session_id IS NOT NULL
+ORDER BY completed_at DESC
+LIMIT 1
+`
+
+type GetPreviousChatTaskSessionParams struct {
+	ChatSessionID pgtype.UUID `json:"chat_session_id"`
+	ID            pgtype.UUID `json:"id"`
+}
+
+type GetPreviousChatTaskSessionRow struct {
+	SessionID pgtype.Text `json:"session_id"`
+	WorkDir   pgtype.Text `json:"work_dir"`
+	RuntimeID pgtype.UUID `json:"runtime_id"`
+}
+
+// Same filter as GetLastChatTaskSession, but excludes one known task row so
+// the chat "undo/regenerate last turn" flow can rewind to the prior resume
+// pointer instead of reusing the one produced by the just-removed reply.
+func (q *Queries) GetPreviousChatTaskSession(ctx context.Context, arg GetPreviousChatTaskSessionParams) (GetPreviousChatTaskSessionRow, error) {
+	row := q.db.QueryRow(ctx, getPreviousChatTaskSession, arg.ChatSessionID, arg.ID)
+	var i GetPreviousChatTaskSessionRow
+	err := row.Scan(&i.SessionID, &i.WorkDir, &i.RuntimeID)
 	return i, err
 }
 
@@ -534,6 +582,34 @@ WHERE id = $1
 // Clears unread_since, dropping the session's unread count to 0.
 func (q *Queries) MarkChatSessionRead(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, markChatSessionRead, id)
+	return err
+}
+
+const replaceChatSessionSession = `-- name: ReplaceChatSessionSession :exec
+UPDATE chat_session
+SET session_id = $1,
+    work_dir = $2,
+    runtime_id = $3,
+    updated_at = now()
+WHERE id = $4
+`
+
+type ReplaceChatSessionSessionParams struct {
+	SessionID pgtype.Text `json:"session_id"`
+	WorkDir   pgtype.Text `json:"work_dir"`
+	RuntimeID pgtype.UUID `json:"runtime_id"`
+	ID        pgtype.UUID `json:"id"`
+}
+
+// Overwrites the chat_session resume pointer, including clearing it back to
+// NULL when a last-turn rewind removes the most recent assistant output.
+func (q *Queries) ReplaceChatSessionSession(ctx context.Context, arg ReplaceChatSessionSessionParams) error {
+	_, err := q.db.Exec(ctx, replaceChatSessionSession,
+		arg.SessionID,
+		arg.WorkDir,
+		arg.RuntimeID,
+		arg.ID,
+	)
 	return err
 }
 

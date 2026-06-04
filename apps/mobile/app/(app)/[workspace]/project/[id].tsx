@@ -15,7 +15,6 @@
  */
 import { useCallback } from "react";
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Linking,
@@ -39,11 +38,13 @@ import {
 } from "@/data/queries/projects";
 import { issueKeys } from "@/data/queries/issue-keys";
 import { useDeleteProject } from "@/data/mutations/projects";
+import { getCurrentWebUrl } from "@/data/backend-config";
 import { pinListOptions } from "@/data/queries/pins";
 import { useCreatePin, useDeletePin } from "@/data/mutations/pins";
 import { useAuthStore } from "@/data/auth-store";
 import { useProjectRealtime } from "@/data/realtime/use-project-realtime";
 import { useWorkspaceStore } from "@/data/workspace-store";
+import { showActionMenu } from "@/lib/action-menu";
 
 export default function ProjectDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -86,44 +87,36 @@ export default function ProjectDetail() {
 
   const onPressMore = () => {
     if (!project) return;
-    const wsUrl = process.env.EXPO_PUBLIC_WEB_URL;
-    const options = [
-      "Cancel",
-      isPinned ? "Unpin" : "Pin",
-      "Edit details",
-      ...(wsUrl ? ["Open on web"] : []),
-      "Delete",
-    ];
-    const destructiveIndex = options.length - 1;
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options,
-        cancelButtonIndex: 0,
-        destructiveButtonIndex: destructiveIndex,
-      },
-      (i) => {
-        const label = options[i];
-        if (label === "Pin") {
-          createPin.mutate({ item_type: "project", item_id: project.id });
-          return;
-        }
-        if (label === "Unpin") {
+    const wsUrl = getCurrentWebUrl();
+    void (async () => {
+      const action = await showActionMenu({
+        options: [
+          { key: "pin", label: isPinned ? "Unpin" : "Pin" },
+          { key: "edit", label: "Edit details" },
+          ...(wsUrl ? [{ key: "open", label: "Open on web" }] : []),
+          { key: "delete", label: "Delete", destructive: true },
+        ],
+      });
+      if (action === "pin") {
+        if (isPinned) {
           deletePin.mutate({ itemType: "project", itemId: project.id });
-          return;
+        } else {
+          createPin.mutate({ item_type: "project", item_id: project.id });
         }
-        if (label === "Edit details") {
-          if (wsSlug) router.push(`/${wsSlug}/project/${id}/edit`);
-          return;
-        }
-        if (label === "Open on web" && wsUrl) {
-          Linking.openURL(`${wsUrl}/${wsSlug}/projects/${id}`);
-          return;
-        }
-        if (i === destructiveIndex) {
-          onDelete();
-        }
-      },
-    );
+        return;
+      }
+      if (action === "edit") {
+        if (wsSlug) router.push(`/${wsSlug}/project/${id}/edit`);
+        return;
+      }
+      if (action === "open" && wsUrl) {
+        Linking.openURL(`${wsUrl}/${wsSlug}/projects/${id}`);
+        return;
+      }
+      if (action === "delete") {
+        onDelete();
+      }
+    })();
   };
 
   const onDelete = () => {

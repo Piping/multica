@@ -41,7 +41,11 @@ export function useChatSessionsRealtime() {
             title?: string;
             updated_at?: string;
           };
-          patchSessionListAfterRename(qc, wsId, payload);
+          if (typeof payload.title === "string" || typeof payload.updated_at === "string") {
+            patchSessionListAfterRename(qc, wsId, payload);
+          } else {
+            invalidateSessions();
+          }
         }),
         ws.on("chat:session_deleted", (payload) => {
           dropSessionFromList(qc, wsId, payload);

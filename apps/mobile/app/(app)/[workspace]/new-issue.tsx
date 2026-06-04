@@ -17,12 +17,10 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   TextInput,
 } from "react-native";
 import { Stack, router } from "expo-router";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SubmitIssueButton } from "@/components/issue/submit-issue-button";
 import { CreateFormAttributeRow } from "@/components/issue/create-form-attribute-row";
 import { MentionSuggestionBar } from "@/components/issue/mention-suggestion-bar";
@@ -107,37 +105,33 @@ export default function NewIssueModal() {
   return (
     <>
       <Stack.Screen options={{ headerRight }} />
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollView
         className="flex-1 bg-background"
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        contentContainerClassName="px-4 pt-4 pb-6 gap-4"
+        keyboardShouldPersistTaps="handled"
+        bottomOffset={16}
       >
-        <ScrollView
-          className="flex-1"
-          contentContainerClassName="px-4 pt-4 pb-6 gap-4"
-          keyboardShouldPersistTaps="handled"
-        >
-          <TextInput
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Issue title"
-            placeholderTextColor={MOBILE_PLACEHOLDER_COLOR}
-            className="text-2xl font-semibold text-foreground py-2"
-            autoFocus
-            returnKeyType="next"
-            editable={!isSubmitting}
-          />
-          <DescriptionField
-            description={description}
-            disabled={isSubmitting}
-          />
-          <CreateFormAttributeRow />
-        </ScrollView>
+        <TextInput
+          value={title}
+          onChangeText={setTitle}
+          placeholder="Issue title"
+          placeholderTextColor={MOBILE_PLACEHOLDER_COLOR}
+          className="text-2xl font-semibold text-foreground py-2"
+          autoFocus
+          returnKeyType="next"
+          editable={!isSubmitting}
+        />
+        <DescriptionField
+          description={description}
+          disabled={isSubmitting}
+        />
+        <CreateFormAttributeRow />
 
         {/* Mention suggestions float above the keyboard only when the user
             types `@`. Self-hides via `if (!visible) return null` so it
             doesn't take space at rest. */}
         <MentionSuggestionBar {...description.suggestionBar} />
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </>
   );
 }

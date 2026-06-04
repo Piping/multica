@@ -13,6 +13,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const env = process.env.APP_ENV ?? "development";
   const isProd = env === "production";
   const isStaging = env === "staging";
+  const androidPackage = isProd
+    ? (process.env.EXPO_ANDROID_PACKAGE_PROD ?? "ai.multica.mobile")
+    : isStaging
+      ? "ai.multica.mobile.staging"
+      : (process.env.EXPO_ANDROID_PACKAGE_DEV ?? "ai.multica.mobile.dev");
 
   return {
     ...config,
@@ -26,9 +31,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     orientation: "portrait",
     userInterfaceStyle: "automatic",
     scheme: "multica",
-    // 1024x1024 source shared with the desktop client
-    // (apps/desktop/build/icon.png). Expo prebuild generates every required
-    // iOS icon size from this single PNG.
+    // iOS still uses the shared 1024x1024 source from desktop
+    // (apps/desktop/build/icon.png). Android uses dedicated assets below
+    // because adaptive icons need a different foreground-safe composition.
     icon: "./assets/icon.png",
     ios: {
       supportsTablet: false,
@@ -46,6 +51,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         : isStaging
           ? "ai.multica.mobile.staging"
           : (process.env.EXPO_BUNDLE_IDENTIFIER_DEV ?? "ai.multica.mobile.dev"),
+    },
+    android: {
+      package: androidPackage,
+      icon: "./assets/android-icon.png",
+      adaptiveIcon: {
+        foregroundImage: "./assets/android-adaptive-foreground.png",
+        backgroundColor: "#0b0b0c",
+      },
     },
     plugins: [
       "expo-router",

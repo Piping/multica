@@ -1,18 +1,28 @@
-# Multica Mobile (iOS)
+# Multica Mobile
 
-Expo + React Native iOS client for Multica. Independent from web/desktop — shares only types from `@multica/core/`. See [`CLAUDE.md`](./CLAUDE.md) for the locked tech-stack baseline and import rules.
+Expo + React Native mobile client for Multica. Independent from web/desktop — shares only types from `@multica/core/`. See [`CLAUDE.md`](./CLAUDE.md) for the locked tech-stack baseline and import rules.
 
 ## Just want to use it on your phone? (no development)
 
-Multica isn't on the App Store yet — until that changes, anyone who wants it on their iPhone builds from source. One command:
+Multica isn't on the App Store or Play Store yet — until that changes, anyone who wants it on their phone builds from source.
+
+iPhone:
 
 ```bash
 pnpm ios:mobile:device:prod:release
 ```
 
-This connects to the same backend as `multica.ai`, so your existing account just works.
+Android:
 
-**Prerequisites**: Mac with Xcode, a free Apple ID added under Xcode → Settings → Accounts, iPhone connected via USB with [Developer Mode enabled](https://docs.expo.dev/guides/ios-developer-mode/). Walk through Expo's [Set up your environment](https://docs.expo.dev/get-started/set-up-your-environment/) (pick **Development build → iOS Device**) if any of that is missing.
+```bash
+pnpm android:mobile:device:prod:release
+```
+
+Both connect to the same backend as `multica.ai`, so your existing account just works.
+
+**iPhone prerequisites**: Mac with Xcode, a free Apple ID added under Xcode → Settings → Accounts, iPhone connected via USB with [Developer Mode enabled](https://docs.expo.dev/guides/ios-developer-mode/). Walk through Expo's [Set up your environment](https://docs.expo.dev/get-started/set-up-your-environment/) (pick **Development build → iOS Device**) if any of that is missing.
+
+**Android prerequisites**: Android Studio + SDK, a booted emulator or a USB Android phone with Developer Options + USB debugging enabled. Follow Expo's [Set up your environment](https://docs.expo.dev/get-started/set-up-your-environment/) and pick **Development build → Android Emulator** or **Android Device**.
 
 Xcode signs the build with the "Personal Team" your Apple ID automatically owns — created silently the first time you signed into Xcode, no setup needed. The first build downloads CocoaPods + compiles React Native from source — expect 10–20 minutes. Subsequent builds reuse Xcode's cache.
 
@@ -34,6 +44,14 @@ Everything below is for app developers — you can ignore the rest if you only w
 | `pnpm dev:mobile` | Metro only (reuse existing install) | local (`.env.development.local`) |
 | `pnpm dev:mobile:staging` | Metro only (reuse existing install) | staging (`.env.staging`) |
 | `pnpm dev:mobile:prod` | Metro only (reuse existing install) | production (`.env.production`) |
+| `pnpm android:mobile` | Full rebuild + install on **Android emulator**, Debug | local |
+| `pnpm android:mobile:staging` | Full rebuild + install on **Android emulator**, Debug | staging |
+| `pnpm android:mobile:prod` | Full rebuild + install on **Android emulator**, Debug | production |
+| `pnpm android:mobile:device` | Full rebuild + install on **USB Android device**, Debug | local |
+| `pnpm android:mobile:device:staging` | Full rebuild + install on **USB Android device**, Debug | staging |
+| `pnpm android:mobile:device:staging:release` | Full rebuild + install on **USB Android device**, Release | staging |
+| `pnpm android:mobile:device:prod` | Full rebuild + install on **USB Android device**, Debug | production |
+| `pnpm android:mobile:device:prod:release` | Full rebuild + install on **USB Android device**, Release | production |
 | `pnpm ios:mobile` | Full rebuild + install on **iOS Simulator**, Debug | local |
 | `pnpm ios:mobile:staging` | Full rebuild + install on **iOS Simulator**, Debug | staging |
 | `pnpm ios:mobile:prod` | Full rebuild + install on **iOS Simulator**, Debug | production |
@@ -43,7 +61,7 @@ Everything below is for app developers — you can ignore the rest if you only w
 | `pnpm ios:mobile:device:prod` | Full rebuild + install on **USB iPhone**, Debug | production |
 | `pnpm ios:mobile:device:prod:release` | Full rebuild + install on **USB iPhone**, Release (standalone) | production |
 
-`dev:*` runs Metro only — assumes the matching variant is already installed. `ios:mobile*` does a full native rebuild + install.
+`dev:*` runs Metro only — assumes the matching variant is already installed. `android:mobile*` and `ios:mobile*` do a full native rebuild + install.
 
 Bundle id and display name switch on `APP_ENV` (see `app.config.ts`), so Dev / Staging / Production variants can coexist on the same device or simulator.
 
@@ -58,11 +76,29 @@ cp apps/mobile/.env.example apps/mobile/.env.development.local
 
 If your Apple ID isn't on the Multica Apple Developer team yet, also uncomment and set `EXPO_BUNDLE_IDENTIFIER_DEV` to a reverse-domain you own (e.g. `com.yourname.multica.dev`). This **only** overrides the dev variant — staging / production bundle ids are intentionally not overridable so variants can coexist.
 
-## Build it onto your iPhone
+## Build it onto your phone
+
+### Android device
+
+```bash
+pnpm android:mobile:device:staging
+```
+
+Produces a Debug build and installs it to the attached Android device. Keep Metro running with `pnpm dev:mobile:staging` for JS iteration.
+
+Standalone / no Metro:
+
+```bash
+pnpm android:mobile:device:staging:release
+```
+
+Produces a Release build with the JS bundle embedded. Re-run after JS changes.
+
+### iPhone
 
 Two paths, depending on what you want to do:
 
-### Day-to-day development (Mac in front of you)
+#### Day-to-day development (Mac in front of you)
 
 ```bash
 pnpm ios:mobile:device:staging
@@ -70,7 +106,7 @@ pnpm ios:mobile:device:staging
 
 Produces a **Debug build** with `expo-dev-launcher` embedded. Every launch the app probes Metro on your Mac and pulls fresh JS — perfect for hot-reload, painful when the Mac is asleep or you're on a different WiFi.
 
-### Standalone / "just use it" (walk away from the Mac)
+#### Standalone / "just use it" (walk away from the Mac)
 
 ```bash
 pnpm ios:mobile:device:staging:release
@@ -78,7 +114,7 @@ pnpm ios:mobile:device:staging:release
 
 Produces a **Release build**. No `expo-dev-launcher`, no Metro probe, no "Downloading…" screen. Splash → app, exactly like an App Store install. Trade-off: every JS change requires re-running this command.
 
-Both paths share the same prerequisites: Mac with Xcode, free Apple ID added under Xcode → Settings → Accounts, iPhone connected via USB with Developer Mode enabled. Follow Expo's [Set up your environment](https://docs.expo.dev/get-started/set-up-your-environment/) — pick **Development build → iOS Device** — if any of that is missing.
+Both iPhone paths share the same prerequisites: Mac with Xcode, free Apple ID added under Xcode → Settings → Accounts, iPhone connected via USB with Developer Mode enabled. Follow Expo's [Set up your environment](https://docs.expo.dev/get-started/set-up-your-environment/) — pick **Development build → iOS Device** — if any of that is missing.
 
 First build of either variant downloads CocoaPods + compiles React Native from source — expect 10-20 minutes. Subsequent builds reuse Xcode's DerivedData cache.
 
@@ -90,7 +126,15 @@ pnpm ios:mobile:staging
 
 Boots the simulator, builds, installs the dev-client. Faster to iterate than a device build because no signing / provisioning step. Same `dev:mobile:staging` Metro flow afterward.
 
-## 7-day signing limit (device only)
+## Try it in the Android emulator
+
+```bash
+pnpm android:mobile:staging
+```
+
+Boots the emulator, builds, installs the debug app. Same `dev:mobile:staging` Metro flow afterward.
+
+## 7-day signing limit (iPhone only)
 
 A free Apple ID signs builds for **7 days only**, Debug and Release both. After that the app refuses to launch on the iPhone. Plug back into the Mac and re-run the corresponding `ios:mobile:device*` script to re-sign. Simulator builds are unaffected. The only workaround for the device limit is an Apple Developer Program account ($99/yr), which extends to 1 year.
 

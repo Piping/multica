@@ -118,18 +118,11 @@ import {
   WorkspaceListSchema,
 } from "./schemas";
 import type { ZodType } from "zod";
+import { Platform } from "react-native";
+import { getCurrentApiUrl } from "./backend-config";
 import { getCurrentSlug } from "./workspace-store";
 import { parseWithFallback } from "@/lib/parse-response";
 import { createRequestId } from "@/lib/request-id";
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
-
-if (!API_URL) {
-  throw new Error(
-    "EXPO_PUBLIC_API_URL is not set. Add it to apps/mobile/.env.development.local " +
-      "(see apps/mobile/.env.staging for an example).",
-  );
-}
 
 export interface LoginResponse {
   token: string;
@@ -158,6 +151,7 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024;
  *  pull-to-refresh spinner never going away). 30s is generous for any
  *  reasonable Multica payload size on cellular. */
 const FETCH_TIMEOUT_MS = 30_000;
+const CLIENT_OS = Platform.OS === "ios" ? "ios" : "android";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -200,7 +194,7 @@ class ApiClient {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "X-Client-Platform": "mobile",
-      "X-Client-OS": "ios",
+      "X-Client-OS": CLIENT_OS,
       "X-Client-Version": "0.1.0",
       "X-Request-ID": rid,
       ...((init.headers as Record<string, string>) ?? {}),
@@ -241,7 +235,7 @@ class ApiClient {
 
     let res: Response;
     try {
-      res = await fetch(`${API_URL}${path}`, {
+      res = await fetch(`${getCurrentApiUrl()}${path}`, {
         ...init,
         signal: controller.signal,
         headers,
@@ -1195,7 +1189,7 @@ class ApiClient {
     const headers: Record<string, string> = {
       // No Content-Type — let fetch set the multipart boundary.
       "X-Client-Platform": "mobile",
-      "X-Client-OS": "ios",
+      "X-Client-OS": CLIENT_OS,
       "X-Client-Version": "0.1.0",
       "X-Request-ID": rid,
     };
@@ -1215,7 +1209,7 @@ class ApiClient {
 
     console.log(`[api] → POST ${path}`, { rid, filename: asset.name });
 
-    const res = await fetch(`${API_URL}${path}`, {
+    const res = await fetch(`${getCurrentApiUrl()}${path}`, {
       method: "POST",
       headers,
       body: formData,

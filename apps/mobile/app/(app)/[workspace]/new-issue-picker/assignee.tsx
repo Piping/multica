@@ -6,22 +6,34 @@
  */
 import { router } from "expo-router";
 import { AssigneePickerBody } from "@/components/issue/pickers/assignee-picker-body";
+import { SearchablePickerScreen } from "@/components/ui/searchable-picker-screen";
 import { useNewIssueDraftStore } from "@/data/stores/new-issue-draft-store";
 import { useNativeSearchBar } from "@/lib/use-native-search-bar";
 
 export default function NewIssueAssigneePickerRoute() {
   const assignee = useNewIssueDraftStore((s) => s.assignee);
   const setAssignee = useNewIssueDraftStore((s) => s.setAssignee);
-  const query = useNativeSearchBar("Search people", { autoFocus: true });
+  const { query, setQuery, isInlineSearch } = useNativeSearchBar(
+    "Search people",
+    { autoFocus: true },
+  );
 
   return (
-    <AssigneePickerBody
-      value={assignee}
+    <SearchablePickerScreen
+      inlineSearch={isInlineSearch}
       query={query}
-      onChange={(next) => {
-        setAssignee(next);
-        router.back();
-      }}
-    />
+      setQuery={setQuery}
+      placeholder="Search people"
+      autoFocus
+    >
+      <AssigneePickerBody
+        value={assignee}
+        query={query}
+        onChange={(next) => {
+          setAssignee(next);
+          router.back();
+        }}
+      />
+    </SearchablePickerScreen>
   );
 }

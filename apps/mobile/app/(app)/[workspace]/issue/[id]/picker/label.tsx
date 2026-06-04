@@ -8,6 +8,7 @@ import { useRef } from "react";
 import { useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { LabelPickerBody } from "@/components/issue/pickers/label-picker-body";
+import { SearchablePickerScreen } from "@/components/ui/searchable-picker-screen";
 import { issueDetailOptions } from "@/data/queries/issues";
 import {
   useAttachLabel,
@@ -24,7 +25,10 @@ export default function IssueLabelPickerRoute() {
   const attachLabel = useAttachLabel(id);
   const detachLabel = useDetachLabel(id);
   const createLabel = useCreateLabel();
-  const query = useNativeSearchBar("Search labels", { autoFocus: true });
+  const { query, setQuery, isInlineSearch } = useNativeSearchBar(
+    "Search labels",
+    { autoFocus: true },
+  );
 
   // Synchronous lock to prevent double-submit on rapid taps on the Create
   // row before React state updates — mirrors web's `creatingRef` pattern in
@@ -34,26 +38,34 @@ export default function IssueLabelPickerRoute() {
   const attached = issue?.labels ?? [];
 
   return (
-    <LabelPickerBody
-      attached={attached}
+    <SearchablePickerScreen
+      inlineSearch={isInlineSearch}
       query={query}
-      onAttach={(label) => attachLabel.mutate({ label })}
-      onDetach={(labelId) => detachLabel.mutate({ labelId })}
-      onCreate={(name, color) => {
-        if (creatingRef.current) return;
-        creatingRef.current = true;
-        createLabel.mutate(
-          { name, color },
-          {
-            onSuccess: (label) => {
-              attachLabel.mutate({ label });
+      setQuery={setQuery}
+      placeholder="Search labels"
+      autoFocus
+    >
+      <LabelPickerBody
+        attached={attached}
+        query={query}
+        onAttach={(label) => attachLabel.mutate({ label })}
+        onDetach={(labelId) => detachLabel.mutate({ labelId })}
+        onCreate={(name, color) => {
+          if (creatingRef.current) return;
+          creatingRef.current = true;
+          createLabel.mutate(
+            { name, color },
+            {
+              onSuccess: (label) => {
+                attachLabel.mutate({ label });
+              },
+              onSettled: () => {
+                creatingRef.current = false;
+              },
             },
-            onSettled: () => {
-              creatingRef.current = false;
-            },
-          },
-        );
-      }}
-    />
+          );
+        }}
+      />
+    </SearchablePickerScreen>
   );
 }

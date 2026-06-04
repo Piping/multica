@@ -107,8 +107,8 @@ type ChatSessionDeletedPayload struct {
 // without a full refetch.
 type ChatSessionUpdatedPayload struct {
 	ChatSessionID string `json:"chat_session_id"`
-	Title         string `json:"title"`
-	UpdatedAt     string `json:"updated_at"`
+	Title         string `json:"title,omitempty"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
 }
 
 // DaemonHeartbeatRequestPayload is sent from daemon to server over WebSocket

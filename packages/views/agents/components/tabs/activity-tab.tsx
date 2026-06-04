@@ -6,7 +6,9 @@ import {
   ArrowUpRight,
   CircleHelp,
   Hash,
+  Loader2,
   MessageSquare,
+  RotateCcw,
   Workflow,
   X,
 } from "lucide-react";
@@ -340,7 +342,7 @@ function TaskList({
   );
 }
 
-function TaskRow({
+export function TaskRow({
   task,
   issueMap,
   timeMode,
@@ -355,6 +357,7 @@ function TaskRow({
   const timeAgo = useTimeAgo();
   const paths = useWorkspacePaths();
   const [cancelling, setCancelling] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const cfg = taskStatusConfig[task.status] ?? taskStatusConfig.queued!;
   const Icon = cfg.icon;
   const hasIssue = task.issue_id !== "";
@@ -370,6 +373,10 @@ function TaskRow({
     (task.status === "queued" ||
       task.status === "dispatched" ||
       task.status === "running");
+  const showRetry =
+    timeMode === "completed" &&
+    hasIssue &&
+    (task.status === "failed" || task.status === "cancelled");
 
   const handleCancel = async () => {
     if (cancelling) return;
@@ -382,6 +389,24 @@ function TaskRow({
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t(($) => $.tab_body.activity.cancel_failed_toast));
       setCancelling(false);
+    }
+  };
+
+  const handleRetry = async () => {
+    if (retrying || !hasIssue) return;
+    setRetrying(true);
+    try {
+      await api.rerunIssue(task.issue_id, task.id);
+      // No manual invalidate needed — retry enqueues a queued child task and
+      // the shared task WS handlers already refresh snapshot + agent task list.
+    } catch (e) {
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : t(($) => $.tab_body.activity.retry_failed_toast),
+      );
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -540,6 +565,32 @@ function TaskRow({
             isLive={isRunning}
             title={t(($) => $.tab_body.activity.transcript_tooltip)}
           />
+        )}
+        {showRetry && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  disabled={retrying}
+                  aria-label={t(($) => $.tab_body.activity.retry_task_aria)}
+                />
+              }
+              className="flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {retrying ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RotateCcw className="h-3.5 w-3.5" />
+              )}
+            </TooltipTrigger>
+            <TooltipContent>
+              {retrying
+                ? t(($) => $.tab_body.activity.retrying_tooltip)
+                : t(($) => $.tab_body.activity.retry_task_tooltip)}
+            </TooltipContent>
+          </Tooltip>
         )}
         {showCancel && (
           <Tooltip>

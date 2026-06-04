@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useWorkspaceId } from "../hooks";
 import { chatKeys } from "./queries";
@@ -6,6 +6,17 @@ import { createLogger } from "../logger";
 import type { ChatSession } from "../types";
 
 const logger = createLogger("chat.mut");
+
+function invalidateChatSessionCaches(
+  qc: QueryClient,
+  wsId: string,
+  sessionId: string,
+) {
+  qc.invalidateQueries({ queryKey: chatKeys.messages(sessionId) });
+  qc.invalidateQueries({ queryKey: chatKeys.pendingTask(sessionId) });
+  qc.invalidateQueries({ queryKey: chatKeys.pendingTasks(wsId) });
+  qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+}
 
 export function useCreateChatSession() {
   const qc = useQueryClient();
@@ -136,6 +147,60 @@ export function useDeleteChatSession() {
     onSettled: (_data, _err, sessionId) => {
       logger.debug("deleteChatSession.settled", { sessionId });
       qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+    },
+  });
+}
+
+export function useWithdrawLastChatMessage() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+
+  return useMutation({
+    mutationFn: (sessionId: string) => {
+      logger.info("withdrawLastChatMessage.start", { sessionId });
+      return api.withdrawLastChatMessage(sessionId);
+    },
+    onError: (err, sessionId) => {
+      logger.error("withdrawLastChatMessage.error", { sessionId, err });
+    },
+    onSettled: (_data, _err, sessionId) => {
+      invalidateChatSessionCaches(qc, wsId, sessionId);
+    },
+  });
+}
+
+export function useRegenerateLastChatMessage() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+
+  return useMutation({
+    mutationFn: (sessionId: string) => {
+      logger.info("regenerateLastChatMessage.start", { sessionId });
+      return api.regenerateLastChatMessage(sessionId);
+    },
+    onError: (err, sessionId) => {
+      logger.error("regenerateLastChatMessage.error", { sessionId, err });
+    },
+    onSettled: (_data, _err, sessionId) => {
+      invalidateChatSessionCaches(qc, wsId, sessionId);
+    },
+  });
+}
+
+export function useResendLastChatMessage() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceId();
+
+  return useMutation({
+    mutationFn: (sessionId: string) => {
+      logger.info("resendLastChatMessage.start", { sessionId });
+      return api.resendLastChatMessage(sessionId);
+    },
+    onError: (err, sessionId) => {
+      logger.error("resendLastChatMessage.error", { sessionId, err });
+    },
+    onSettled: (_data, _err, sessionId) => {
+      invalidateChatSessionCaches(qc, wsId, sessionId);
     },
   });
 }

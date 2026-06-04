@@ -15,13 +15,14 @@
 import { Alert, ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Workspace } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { BACKEND_OPTIONS, useBackendStore } from "@/data/backend-config";
 import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
@@ -29,6 +30,7 @@ import {
   useColorScheme,
   type ThemePreference,
 } from "@/lib/use-color-scheme";
+import { showActionMenu } from "@/lib/action-menu";
 import { THEME } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -52,9 +54,12 @@ function initialsOf(name: string | undefined): string {
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const queryClient = useQueryClient();
   const currentSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const setCurrentWorkspace = useWorkspaceStore((s) => s.setCurrentWorkspace);
   const clearWorkspace = useWorkspaceStore((s) => s.clear);
+  const currentBackend = useBackendStore((s) => s.current);
+  const setBackend = useBackendStore((s) => s.setBackend);
   const { data, isLoading, error } = useQuery(workspaceListOptions());
   const { preference, setPreference, colorScheme } = useColorScheme();
   const mutedFg = THEME[colorScheme].mutedForeground;
@@ -86,6 +91,45 @@ export default function SettingsPage() {
   const goProfile = () => router.push(`/${currentSlug}/more/settings/profile`);
   const goNotifications = () =>
     router.push(`/${currentSlug}/more/settings/notifications`);
+
+  const onSelectBackend = () => {
+    void (async () => {
+      const nextApiUrl = await showActionMenu({
+        title: "Default backend",
+        message: "Switching backend signs this device out immediately.",
+        options: BACKEND_OPTIONS.map((backend) => ({
+          key: backend.apiUrl,
+          label:
+            backend.apiUrl === currentBackend.apiUrl
+              ? `${backend.label} (Current)`
+              : backend.label,
+        })),
+      });
+      if (!nextApiUrl || nextApiUrl === currentBackend.apiUrl) return;
+      const nextBackend = BACKEND_OPTIONS.find(
+        (backend) => backend.apiUrl === nextApiUrl,
+      );
+      if (!nextBackend) return;
+
+      Alert.alert(
+        "Switch backend?",
+        `Switch to ${nextBackend.label}? You'll need to sign in again on this device.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Switch",
+            onPress: async () => {
+              await setBackend(nextBackend);
+              await clearWorkspace();
+              await logout();
+              queryClient.clear();
+              router.replace("/login");
+            },
+          },
+        ],
+      );
+    })();
+  };
 
   return (
     <ScrollView
@@ -182,6 +226,15 @@ export default function SettingsPage() {
             );
           })}
         </RadioGroup>
+      </SectionGroup>
+
+      <SectionGroup title="Backend">
+        <NavRow
+          onPress={onSelectBackend}
+          chevronColor={mutedFg}
+          title={currentBackend.label}
+          subtitle={currentBackend.subtitle}
+        />
       </SectionGroup>
 
       <View className="pt-2">

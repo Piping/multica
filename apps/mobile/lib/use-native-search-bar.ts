@@ -19,17 +19,27 @@
  */
 import { useLayoutEffect, useState } from "react";
 import { useNavigation } from "expo-router";
-import type { NativeSyntheticEvent, TextInputFocusEventData } from "react-native";
+import {
+  Platform,
+  type NativeSyntheticEvent,
+  type TextInputFocusEventData,
+} from "react-native";
 
 export function useNativeSearchBar(
   placeholder: string,
   options?: { autoFocus?: boolean },
-): string {
+): {
+  query: string;
+  setQuery: (value: string) => void;
+  isInlineSearch: boolean;
+} {
   const navigation = useNavigation();
   const [query, setQuery] = useState("");
   const autoFocus = options?.autoFocus;
+  const isInlineSearch = Platform.OS !== "ios";
 
   useLayoutEffect(() => {
+    if (isInlineSearch) return;
     navigation.setOptions({
       headerSearchBarOptions: {
         placeholder,
@@ -45,7 +55,7 @@ export function useNativeSearchBar(
         onCancelButtonPress: () => setQuery(""),
       },
     });
-  }, [navigation, placeholder, autoFocus]);
+  }, [navigation, placeholder, autoFocus, isInlineSearch]);
 
-  return query;
+  return { query, setQuery, isInlineSearch };
 }

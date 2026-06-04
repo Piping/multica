@@ -1,8 +1,9 @@
 import "../global.css";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -16,6 +17,7 @@ import { useWorkspaceStore } from "@/data/workspace-store";
 import { LightboxProvider, prewarmHighlighter } from "@/lib/markdown";
 import { NAV_THEME } from "@/lib/theme";
 import { useColorScheme } from "@/lib/use-color-scheme";
+import { ActionMenuHost } from "@/lib/action-menu";
 
 // Kick off Shiki highlighter init at module load — fires once per process,
 // finishes before the user navigates to any screen with a code block. If
@@ -26,6 +28,7 @@ prewarmHighlighter();
 function AuthInitializer({ children }: { children: React.ReactNode }) {
   const initialize = useAuthStore((s) => s.initialize);
   const qc = useQueryClient();
+  const [ready, setReady] = useState(false);
   // Idempotent guard: 401 on multiple in-flight requests would otherwise
   // logout/navigate repeatedly during the same session-expire moment.
   const signingOutRef = useRef(false);
@@ -51,8 +54,23 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
         })();
       },
     });
-    initialize();
+    let cancelled = false;
+    void initialize().finally(() => {
+      if (!cancelled) setReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [initialize, qc]);
+
+  if (!ready) {
+    return (
+      <View className="flex-1 items-center justify-center bg-background">
+        <ActivityIndicator />
+      </View>
+    );
+  }
 
   return <>{children}</>;
 }
@@ -73,6 +91,7 @@ export default function RootLayout() {
                     <Stack.Screen name="(auth)" />
                     <Stack.Screen name="(app)" />
                   </Stack>
+                  <ActionMenuHost />
                   <PortalHost />
                 </LightboxProvider>
               </AuthInitializer>

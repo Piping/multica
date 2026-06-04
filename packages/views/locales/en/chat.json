@@ -52,7 +52,14 @@
     "show_sessions": "Show chats",
     "hide_sessions": "Hide chats",
     "agent_picker_hint": "New chats start with this agent",
-    "archived_badge": "Archived"
+    "archived_badge": "Archived",
+    "last_turn_actions_aria": "Last message actions",
+    "undo_last": "Withdraw last",
+    "regenerate_last": "Regenerate last",
+    "resend_last": "Resend last",
+    "undo_last_failed": "Failed to withdraw last message",
+    "regenerate_last_failed": "Failed to regenerate last message",
+    "resend_last_failed": "Failed to resend last message"
   },
   "window": {
     "new_chat_tooltip": "New chat",

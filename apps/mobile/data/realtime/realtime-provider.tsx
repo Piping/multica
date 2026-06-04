@@ -37,20 +37,10 @@ import {
 import { AppState, type AppStateStatus } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
 import { useAuthStore } from "@/data/auth-store";
+import { useBackendStore, getCurrentWsUrl } from "@/data/backend-config";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { getToken } from "@/data/secure-storage";
 import { WSClient } from "./ws-client";
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
-
-if (!API_URL) {
-  // ApiClient already throws on this; keeping a defensive check here
-  // avoids a confusing "URL constructor failed" deep in WSClient.
-  throw new Error("EXPO_PUBLIC_API_URL is not set");
-}
-
-// http(s)://host → ws(s)://host/ws
-const WS_URL = `${API_URL.replace(/^http/, "ws")}/ws`;
 
 const RealtimeContext = createContext<WSClient | null>(null);
 
@@ -64,6 +54,7 @@ export function useWSClient(): WSClient | null {
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const userId = useAuthStore((s) => s.user?.id ?? null);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
+  const apiUrl = useBackendStore((s) => s.current.apiUrl);
   const [client, setClient] = useState<WSClient | null>(null);
 
   // Track NetInfo's last known state so we only force-reconnect on the
@@ -87,7 +78,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (cancelled || !token) return;
 
       ws = new WSClient({
-        url: WS_URL,
+        url: getCurrentWsUrl(),
         token,
         workspaceSlug: wsSlug,
         clientVersion: "0.1.0",
@@ -136,7 +127,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       ws?.disconnect();
       setClient(null);
     };
-  }, [userId, wsSlug]);
+  }, [apiUrl, userId, wsSlug]);
 
   return (
     <RealtimeContext.Provider value={client}>

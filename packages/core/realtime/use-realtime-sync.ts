@@ -892,20 +892,30 @@ export function useRealtimeSync(
       };
       chatWsLogger.info("chat:session_updated (global)", payload);
       const id = getCurrentWsId();
-      if (!id) return;
-      const patch = (
-        old?: { id: string; title: string; updated_at: string }[],
-      ) =>
-        old?.map((s) =>
-          s.id === payload.chat_session_id
-            ? {
-                ...s,
-                title: payload.title ?? s.title,
-                updated_at: payload.updated_at ?? s.updated_at,
-              }
-            : s,
-        );
-      qc.setQueryData(chatKeys.sessions(id), patch);
+      const hasSessionRowPatch =
+        typeof payload.title === "string" || typeof payload.updated_at === "string";
+      if (id) {
+        if (hasSessionRowPatch) {
+          const patch = (
+            old?: { id: string; title: string; updated_at: string }[],
+          ) =>
+            old?.map((s) =>
+              s.id === payload.chat_session_id
+                ? {
+                    ...s,
+                    title: payload.title ?? s.title,
+                    updated_at: payload.updated_at ?? s.updated_at,
+                  }
+                : s,
+            );
+          qc.setQueryData(chatKeys.sessions(id), patch);
+        } else {
+          invalidateSessionLists();
+        }
+      }
+      qc.invalidateQueries({ queryKey: chatKeys.messages(payload.chat_session_id) });
+      qc.invalidateQueries({ queryKey: chatKeys.pendingTask(payload.chat_session_id) });
+      invalidatePendingAggregate();
     });
 
     // chat:session_deleted fires after a hard delete. The originating tab has

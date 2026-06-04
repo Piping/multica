@@ -4,11 +4,10 @@
  * Layout:
  *   View ─ Header(center: ChatTitleButton, right: ChatSessionActions)
  *        ─ (NoAgentBanner?)
- *        ─ KeyboardAvoidingView ─ ChatMessageList (includes live status
- *                                                  + timeline in its
- *                                                  ListFooterComponent)
- *                                ─ OfflineBanner
- *                                ─ ChatComposer
+ *        ─ View ─ ChatMessageList (includes live status + timeline in
+ *                                  its ListFooterComponent)
+ *               ─ OfflineBanner
+ *               ─ ChatComposer (sticks to keyboard via KeyboardStickyView)
  *
  * Session switching, agent selection, and session deletion all happen
  * inside this screen via Modal sheets — there is no `/chat/[id]` sub-route.
@@ -33,8 +32,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   View,
 } from "react-native";
 import { router } from "expo-router";
@@ -387,10 +384,7 @@ export default function ChatTab() {
         }
       />
       {availability === "none" ? <NoAgentBanner /> : null}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1"
-      >
+      <View className="flex-1">
         <ChatMessageList
           messages={messages}
           loading={messagesLoading}
@@ -414,7 +408,7 @@ export default function ChatTab() {
           disabled={disabled}
           disabledReason={disabledReason}
         />
-      </KeyboardAvoidingView>
+      </View>
 
       <AgentPickerSheet
         visible={agentPickerOpen}

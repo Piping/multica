@@ -1608,6 +1608,24 @@ export class ApiClient {
     });
   }
 
+  async withdrawLastChatMessage(sessionId: string): Promise<void> {
+    await this.fetch(`/api/chat/sessions/${sessionId}/messages/withdraw-last`, {
+      method: "POST",
+    });
+  }
+
+  async regenerateLastChatMessage(sessionId: string): Promise<SendChatMessageResponse> {
+    return this.fetch(`/api/chat/sessions/${sessionId}/messages/regenerate-last`, {
+      method: "POST",
+    });
+  }
+
+  async resendLastChatMessage(sessionId: string): Promise<SendChatMessageResponse> {
+    return this.fetch(`/api/chat/sessions/${sessionId}/messages/resend-last`, {
+      method: "POST",
+    });
+  }
+
   async getPendingChatTask(sessionId: string): Promise<ChatPendingTask> {
     return this.fetch(`/api/chat/sessions/${sessionId}/pending-task`);
   }

@@ -7,6 +7,7 @@
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { AssigneePickerBody } from "@/components/issue/pickers/assignee-picker-body";
+import { SearchablePickerScreen } from "@/components/ui/searchable-picker-screen";
 import { issueDetailOptions } from "@/data/queries/issues";
 import { useUpdateIssue } from "@/data/mutations/issues";
 import { useWorkspaceStore } from "@/data/workspace-store";
@@ -17,7 +18,10 @@ export default function IssueAssigneePickerRoute() {
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const { data: issue } = useQuery(issueDetailOptions(wsId, id));
   const updateIssue = useUpdateIssue(id);
-  const query = useNativeSearchBar("Search people", { autoFocus: true });
+  const { query, setQuery, isInlineSearch } = useNativeSearchBar(
+    "Search people",
+    { autoFocus: true },
+  );
 
   const value =
     issue?.assignee_type && issue?.assignee_id
@@ -25,20 +29,28 @@ export default function IssueAssigneePickerRoute() {
       : null;
 
   return (
-    <AssigneePickerBody
-      value={value}
+    <SearchablePickerScreen
+      inlineSearch={isInlineSearch}
       query={query}
-      onChange={(next) => {
-        if (next === null) {
-          updateIssue.mutate({ assignee_type: null, assignee_id: null });
-        } else {
-          updateIssue.mutate({
-            assignee_type: next.type,
-            assignee_id: next.id,
-          });
-        }
-        router.back();
-      }}
-    />
+      setQuery={setQuery}
+      placeholder="Search people"
+      autoFocus
+    >
+      <AssigneePickerBody
+        value={value}
+        query={query}
+        onChange={(next) => {
+          if (next === null) {
+            updateIssue.mutate({ assignee_type: null, assignee_id: null });
+          } else {
+            updateIssue.mutate({
+              assignee_type: next.type,
+              assignee_id: next.id,
+            });
+          }
+          router.back();
+        }}
+      />
+    </SearchablePickerScreen>
   );
 }

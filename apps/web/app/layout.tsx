@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Geist_Mono, Source_Serif_4 } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
+import { PWARegistration } from "@/components/pwa-registration";
 import { Toaster } from "@multica/ui/components/ui/sonner";
 import { cn } from "@multica/ui/lib/utils";
 import { WebProviders } from "@/components/web-providers";
@@ -9,55 +9,40 @@ import { RESOURCES } from "@multica/views/locales";
 import { getRequestLocale } from "@/lib/request-locale";
 import "./globals.css";
 
-// Font stack: Inter for Latin UI text + system Chinese fonts for zh content.
-// Desktop app uses the same stack via apps/desktop/src/renderer/src/globals.css —
-// keep the CJK fallback tail in sync across both files. The Inter primary family
-// differs by design: next/font produces `__Inter_xxx` (with a synthetic size-adjusted
-// fallback face to prevent FOUT layout shift); desktop uses fontsource's "Inter Variable".
-// Both resolve to Inter glyphs, so rendering is identical in practice.
-// Currently covers English + Simplified Chinese. When ja/ko i18n lands, extend
-// the tail with Hiragino Kaku Gothic ProN / Yu Gothic / Apple SD Gothic Neo / Malgun Gothic.
-// Per-character fallback: Latin chars render with Inter, Chinese chars with
-// PingFang SC (macOS) / Microsoft YaHei (Windows) / Noto Sans CJK SC (Linux).
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  fallback: [
+// Web builds run inside a container that cannot assume outbound access to
+// fonts.googleapis.com. Keep the font variables local so the app remains
+// buildable offline; if Inter / Geist Mono / Source Serif 4 are installed on
+// the host they win, otherwise the stack falls back to platform fonts.
+const FONT_VARIABLES = {
+  "--font-sans": [
+    '"Inter Variable"',
+    "Inter",
     "-apple-system",
     "BlinkMacSystemFont",
-    "Segoe UI",
-    "PingFang SC",
-    "Microsoft YaHei",
-    "Noto Sans CJK SC",
+    '"Segoe UI"',
+    '"PingFang SC"',
+    '"Microsoft YaHei"',
+    '"Noto Sans CJK SC"',
     "sans-serif",
-  ],
-});
-// Mono font has no explicit CJK fallback: CJK chars in code blocks are inherently
-// non-aligned with a mono grid (Chinese is proportional), so listing CJK fonts
-// here would falsely signal alignment guarantees. Browser default fallback handles
-// the rare mixed case correctly.
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
-});
-// Editorial serif used for onboarding headlines. Italic support for h1 em
-// accents (e.g. "...on one shared board."). Only loaded on routes that
-// render the font; layout-shift-prevention handled by next/font's synthetic
-// fallback metrics, same as Inter.
-const sourceSerif = Source_Serif_4({
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  variable: "--font-serif",
-  fallback: [
+  ].join(", "),
+  "--font-mono": [
+    '"Geist Mono"',
+    "ui-monospace",
+    '"SFMono-Regular"',
+    "Menlo",
+    "Consolas",
+    "monospace",
+  ].join(", "),
+  "--font-serif": [
+    '"Source Serif 4"',
     "ui-serif",
-    "Iowan Old Style",
-    "Apple Garamond",
+    '"Iowan Old Style"',
+    '"Apple Garamond"',
     "Baskerville",
-    "Times New Roman",
+    '"Times New Roman"',
     "serif",
-  ],
-});
+  ].join(", "),
+} as React.CSSProperties;
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -70,15 +55,27 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.multica.ai"),
+  applicationName: "Multica",
   title: {
     default: "Multica — Project Management for Human + Agent Teams",
     template: "%s | Multica",
   },
   description:
     "Open-source platform that turns coding agents into real teammates. Assign tasks, track progress, compound skills.",
+  manifest: "/manifest.webmanifest",
   icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     shortcut: ["/favicon.svg"],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Multica",
   },
   openGraph: {
     type: "website",
@@ -120,13 +117,15 @@ export default async function RootLayout({
     <html
       lang={HTML_LANG[locale]}
       suppressHydrationWarning
-      className={cn("antialiased font-sans h-full", inter.variable, geistMono.variable, sourceSerif.variable)}
+      className={cn("antialiased font-sans h-full")}
+      style={FONT_VARIABLES}
     >
       <body className="h-full overflow-hidden">
         <ThemeProvider>
           <WebProviders locale={locale} resources={resources}>
             {children}
           </WebProviders>
+          <PWARegistration />
           <Toaster />
         </ThemeProvider>
       </body>

@@ -19,14 +19,12 @@ import { useCallback, useState } from "react";
 import {
   Alert,
   InteractionManager,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   TextInput,
   View,
 } from "react-native";
 import { Stack, router } from "expo-router";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { Text } from "@/components/ui/text";
 import { AutosizeTextArea } from "@/components/ui/autosize-textarea";
 import {
@@ -176,78 +174,74 @@ export default function NewProject() {
   return (
     <>
       <Stack.Screen options={{ headerLeft, headerRight }} />
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollView
         className="flex-1 bg-background"
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        contentContainerClassName="px-4 pt-4 pb-6 gap-4"
+        keyboardShouldPersistTaps="handled"
+        bottomOffset={16}
       >
-        <ScrollView
-          className="flex-1"
-          contentContainerClassName="px-4 pt-4 pb-6 gap-4"
-          keyboardShouldPersistTaps="handled"
-        >
-          <Field label="Icon (emoji)">
-            <TextInput
-              value={icon}
-              onChangeText={(v) => setIcon(v.slice(0, 4))}
-              placeholder="📦"
-              placeholderTextColor={MOBILE_PLACEHOLDER_COLOR}
-              className="text-2xl text-foreground bg-secondary/50 rounded-md px-3 py-2 self-start min-w-[60px] text-center"
-              maxLength={4}
-            />
-          </Field>
+        <Field label="Icon (emoji)">
+          <TextInput
+            value={icon}
+            onChangeText={(v) => setIcon(v.slice(0, 4))}
+            placeholder="📦"
+            placeholderTextColor={MOBILE_PLACEHOLDER_COLOR}
+            className="text-2xl text-foreground bg-secondary/50 rounded-md px-3 py-2 self-start min-w-[60px] text-center"
+            maxLength={4}
+          />
+        </Field>
 
-          <Field label="Title">
-            <TextInput
-              value={title}
-              onChangeText={setTitle}
-              placeholder="Project title"
-              placeholderTextColor={MOBILE_PLACEHOLDER_COLOR}
-              className="text-base text-foreground bg-secondary/50 rounded-md px-3 py-2"
-              autoFocus
-              returnKeyType="next"
-            />
-          </Field>
+        <Field label="Title">
+          <TextInput
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Project title"
+            placeholderTextColor={MOBILE_PLACEHOLDER_COLOR}
+            className="text-base text-foreground bg-secondary/50 rounded-md px-3 py-2"
+            autoFocus
+            returnKeyType="next"
+          />
+        </Field>
 
-          <Field label="Description">
-            <AutosizeTextArea
-              value={description}
-              onChangeText={setDescription}
-              placeholder="What is this project about?"
-              className="bg-secondary/50 rounded-md px-3 py-2"
-              minHeight={MIN_BODY_INPUT_HEIGHT_PX}
-            />
-          </Field>
+        <Field label="Description">
+          <AutosizeTextArea
+            value={description}
+            onChangeText={setDescription}
+            placeholder="What is this project about?"
+            className="bg-secondary/50 rounded-md px-3 py-2"
+            minHeight={MIN_BODY_INPUT_HEIGHT_PX}
+          />
+        </Field>
 
-          <View className="flex-row gap-2">
-            <View className="flex-1">
-              <Field label="Status">
-                <Pressable
-                  onPress={() => openPicker("status")}
-                  className="flex-row items-center gap-2 bg-secondary/50 rounded-md px-3 py-2.5"
-                >
-                  <ProjectStatusIcon status={status} size={16} />
-                  <Text className="text-sm text-foreground flex-1">
-                    {projectStatusLabel(status)}
-                  </Text>
-                </Pressable>
-              </Field>
-            </View>
-            <View className="flex-1">
-              <Field label="Priority">
-                <Pressable
-                  onPress={() => openPicker("priority")}
-                  className="flex-row items-center gap-2 bg-secondary/50 rounded-md px-3 py-2.5"
-                >
-                  <ProjectPriorityIcon priority={priority} size={16} />
-                  <Text className="text-sm text-foreground flex-1">
-                    {projectPriorityLabel(priority)}
-                  </Text>
-                </Pressable>
-              </Field>
-            </View>
+        <View className="flex-row gap-2">
+          <View className="flex-1">
+            <Field label="Status">
+              <Pressable
+                onPress={() => openPicker("status")}
+                className="flex-row items-center gap-2 bg-secondary/50 rounded-md px-3 py-2.5"
+              >
+                <ProjectStatusIcon status={status} size={16} />
+                <Text className="text-sm text-foreground flex-1">
+                  {projectStatusLabel(status)}
+                </Text>
+              </Pressable>
+            </Field>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          <View className="flex-1">
+            <Field label="Priority">
+              <Pressable
+                onPress={() => openPicker("priority")}
+                className="flex-row items-center gap-2 bg-secondary/50 rounded-md px-3 py-2.5"
+              >
+                <ProjectPriorityIcon priority={priority} size={16} />
+                <Text className="text-sm text-foreground flex-1">
+                  {projectPriorityLabel(priority)}
+                </Text>
+              </Pressable>
+            </Field>
+          </View>
+        </View>
+      </KeyboardAwareScrollView>
     </>
   );
 }

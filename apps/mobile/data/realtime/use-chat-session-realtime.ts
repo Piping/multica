@@ -94,6 +94,15 @@ export function useChatSessionRealtime(
           if (!isMine(payload)) return;
           onSessionDeleted?.();
         }),
+        ws.on("chat:session_updated", (p) => {
+          const payload = p as {
+            chat_session_id?: string;
+            title?: string;
+            updated_at?: string;
+          };
+          if (!isMine(payload)) return;
+          invalidateMine();
+        }),
         // Live execution trace for any task firing under this chat session.
         // Per-record gate: `chat_session_id` is optional on the payload
         // (issue tasks also fire `task:message`), so non-chat traffic is

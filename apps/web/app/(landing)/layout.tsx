@@ -1,18 +1,5 @@
-import { Instrument_Serif, Noto_Serif_SC } from "next/font/google";
 import { LocaleProvider } from "@/features/landing/i18n";
 import { getRequestLocale } from "@/lib/request-locale";
-
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  variable: "--font-serif",
-});
-
-const notoSerifSC = Noto_Serif_SC({
-  subsets: ["latin"],
-  weight: "400",
-  variable: "--font-serif-zh",
-});
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -52,7 +39,30 @@ export default async function LandingLayout({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <div className={`${instrumentSerif.variable} ${notoSerifSC.variable} landing-light h-full overflow-x-hidden overflow-y-auto bg-white`}>
+      <div
+        className="landing-light h-full overflow-x-hidden overflow-y-auto bg-white"
+        style={
+          {
+            "--font-serif": [
+              '"Source Serif 4"',
+              '"Instrument Serif"',
+              "ui-serif",
+              '"Iowan Old Style"',
+              '"Apple Garamond"',
+              "Baskerville",
+              '"Times New Roman"',
+              "serif",
+            ].join(", "),
+            "--font-serif-zh": [
+              '"Noto Serif SC"',
+              '"Songti SC"',
+              "STSong",
+              '"Noto Serif CJK SC"',
+              "serif",
+            ].join(", "),
+          } as React.CSSProperties
+        }
+      >
         <LocaleProvider initialLocale={initialLocale}>{children}</LocaleProvider>
       </div>
     </>

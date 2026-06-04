@@ -9,5 +9,11 @@
     "minutes_ago": "{{count}}m ago",
     "hours_ago": "{{count}}h ago",
     "days_ago": "{{count}}d ago"
+  },
+  "offline_page": {
+    "title": "You're offline",
+    "description": "Multica could not reach the server. Reconnect to keep working with live tasks, chat, and agent updates.",
+    "retry": "Retry connection",
+    "detail": "If this was opened from your installed app, the shell is still available, but live data needs the network."
   }
 }

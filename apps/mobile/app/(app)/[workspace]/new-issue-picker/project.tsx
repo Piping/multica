@@ -5,22 +5,34 @@
  */
 import { router } from "expo-router";
 import { ProjectPickerBody } from "@/components/issue/pickers/project-picker-body";
+import { SearchablePickerScreen } from "@/components/ui/searchable-picker-screen";
 import { useNewIssueDraftStore } from "@/data/stores/new-issue-draft-store";
 import { useNativeSearchBar } from "@/lib/use-native-search-bar";
 
 export default function NewIssueProjectPickerRoute() {
   const project = useNewIssueDraftStore((s) => s.project);
   const setProject = useNewIssueDraftStore((s) => s.setProject);
-  const query = useNativeSearchBar("Search projects", { autoFocus: true });
+  const { query, setQuery, isInlineSearch } = useNativeSearchBar(
+    "Search projects",
+    { autoFocus: true },
+  );
 
   return (
-    <ProjectPickerBody
-      value={project}
+    <SearchablePickerScreen
+      inlineSearch={isInlineSearch}
       query={query}
-      onChange={(next) => {
-        setProject(next);
-        router.back();
-      }}
-    />
+      setQuery={setQuery}
+      placeholder="Search projects"
+      autoFocus
+    >
+      <ProjectPickerBody
+        value={project}
+        query={query}
+        onChange={(next) => {
+          setProject(next);
+          router.back();
+        }}
+      />
+    </SearchablePickerScreen>
   );
 }

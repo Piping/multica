@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { ComponentProps } from "react";
 import { Redirect, Stack, useLocalSearchParams } from "expo-router";
+import { Platform } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useWorkspaceStore } from "@/data/workspace-store";
@@ -19,12 +20,15 @@ import { useNewProjectDraftResetOnWorkspaceChange } from "@/data/stores/new-proj
 import { useChatSessionPickerResetOnWorkspaceChange } from "@/data/stores/chat-session-picker-store";
 
 /**
- * Shared Stack.Screen options for every iOS formSheet-presented sheet route.
+ * Shared Stack.Screen options for every sheet route.
  *
  * Why these specific values:
  *   - `presentation: "formSheet"` instantiates iOS
  *     UISheetPresentationController — native grabber, stacked-card backdrop,
  *     drag-to-dismiss spring physics, detents.
+ *   - Android falls back to `presentation: "modal"` — Expo Router maps the
+ *     screen to a regular modal card there, which is the stable cross-SDK
+ *     path for a fully interactive route body.
  *   - `sheetAllowedDetents: [0.6, 0.95]` — explicit numeric detents. The
  *     ergonomic `"fitToContents"` is broken on iOS 26 + Expo 55
  *     (expo/expo#42904 padding inconsistency, expo/expo#42965 zero-size).
@@ -44,10 +48,14 @@ import { useChatSessionPickerResetOnWorkspaceChange } from "@/data/stores/chat-s
  *     + optional right action). The native Stack header would double up.
  */
 const SHEET_OPTIONS: ComponentProps<typeof Stack.Screen>["options"] = {
-  presentation: "formSheet",
-  sheetGrabberVisible: true,
-  sheetAllowedDetents: [0.6, 0.95],
-  sheetCornerRadius: 20,
+  presentation: Platform.OS === "ios" ? "formSheet" : "modal",
+  ...(Platform.OS === "ios"
+    ? {
+        sheetGrabberVisible: true,
+        sheetAllowedDetents: [0.6, 0.95],
+        sheetCornerRadius: 20,
+      }
+    : {}),
   contentStyle: { flex: 1 },
   headerShown: false,
 };
@@ -200,7 +208,11 @@ export default function WorkspaceLayout() {
         />
         <Stack.Screen
           name="issue/[id]/picker/label"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Labels",
+          }}
         />
         <Stack.Screen
           name="mention-picker"
@@ -212,7 +224,11 @@ export default function WorkspaceLayout() {
         />
         <Stack.Screen
           name="issue/[id]/picker/project"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Project",
+          }}
         />
         <Stack.Screen
           name="issue/[id]/picker/due-date"
@@ -237,7 +253,11 @@ export default function WorkspaceLayout() {
         />
         <Stack.Screen
           name="project/[id]/picker/lead"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Lead",
+          }}
         />
         <Stack.Screen
           name="project/[id]/add-resource"
@@ -265,7 +285,11 @@ export default function WorkspaceLayout() {
         />
         <Stack.Screen
           name="new-issue-picker/project"
-          options={SHEET_OPTIONS}
+          options={{
+            ...SHEET_OPTIONS,
+            headerShown: true,
+            title: "Project",
+          }}
         />
         <Stack.Screen
           name="new-issue-picker/due-date"

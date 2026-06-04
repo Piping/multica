@@ -9,5 +9,11 @@
     "minutes_ago": "{{count}} 分钟前",
     "hours_ago": "{{count}} 小时前",
     "days_ago": "{{count}} 天前"
+  },
+  "offline_page": {
+    "title": "当前处于离线状态",
+    "description": "Multica 现在无法连接服务器。恢复网络后，实时任务、聊天和智能体状态更新才会继续工作。",
+    "retry": "重试连接",
+    "detail": "如果你是从已安装的 PWA 打开的，应用外壳仍可启动，但实时数据仍然需要网络。"
   }
 }

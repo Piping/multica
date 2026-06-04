@@ -18,12 +18,13 @@
  * first is still dismissing — the callback runs after dismissal completes.
  */
 import { useCallback, useState } from "react";
-import { ActionSheetIOS, Alert } from "react-native";
+import { Alert } from "react-native";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import type { Reaction, TimelineEntry } from "@multica/core/types";
 import { useAuthStore } from "@/data/auth-store";
+import { getCurrentWebUrl } from "@/data/backend-config";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useCommentSelectStore } from "@/data/comment-select-store";
 import { useReplyTargetStore } from "@/data/stores/reply-target-store";
@@ -34,6 +35,7 @@ import {
   useToggleCommentReaction,
 } from "@/data/mutations/issues";
 import { QUICK_EMOJIS } from "@/lib/quick-emojis";
+import { showActionMenu } from "@/lib/action-menu";
 
 const QUICK_ROW_SIZE = 5;
 
@@ -55,140 +57,111 @@ export function useCommentLongPress(
     const isRoot = !entry.parent_id;
     const resolved = !!entry.resolved_at;
     const hasContent = !!entry.content;
-    const webUrl = process.env.EXPO_PUBLIC_WEB_URL;
+    const webUrl = getCurrentWebUrl();
     const canCopyLink = !!(webUrl && wsSlug && issueIdentifier);
     const reactions = (entry.reactions ?? []) as Reaction[];
 
     Haptics.selectionAsync().catch(() => {});
     setIsPressed(true);
 
-    type Action =
-      | { kind: "reply" }
-      | { kind: "react" }
-      | { kind: "copy" }
-      | { kind: "select" }
-      | { kind: "copyLink" }
-      | { kind: "resolve" }
-      | { kind: "delete" }
-      | { kind: "cancel" };
-
-    const options: string[] = [];
-    const actions: Action[] = [];
-    const push = (label: string, action: Action) => {
-      options.push(label);
-      actions.push(action);
-    };
-
-    push("Reply", { kind: "reply" });
-    push("React…", { kind: "react" });
-    if (hasContent) {
-      push("Copy", { kind: "copy" });
-      push("Select Text", { kind: "select" });
-    }
-    if (canCopyLink) push("Copy Link", { kind: "copyLink" });
-    if (isRoot) {
-      push(resolved ? "Unresolve Thread" : "Resolve Thread", {
-        kind: "resolve",
+    void (async () => {
+      const action = await showActionMenu({
+        options: [
+          { key: "reply", label: "Reply" },
+          { key: "react", label: "React…" },
+          ...(hasContent
+            ? [
+                { key: "copy", label: "Copy" },
+                { key: "select", label: "Select Text" },
+              ]
+            : []),
+          ...(canCopyLink ? [{ key: "copyLink", label: "Copy Link" }] : []),
+          ...(isRoot
+            ? [
+                {
+                  key: "resolve",
+                  label: resolved ? "Unresolve Thread" : "Resolve Thread",
+                },
+              ]
+            : []),
+          ...(isOwn
+            ? [{ key: "delete", label: "Delete", destructive: true }]
+            : []),
+        ],
       });
-    }
-    if (isOwn) push("Delete", { kind: "delete" });
-    push("Cancel", { kind: "cancel" });
+      setIsPressed(false);
+      if (!action) return;
 
-    const cancelButtonIndex = options.length - 1;
-    const destructiveButtonIndex = isOwn
-      ? actions.findIndex((a) => a.kind === "delete")
-      : undefined;
-
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options,
-        cancelButtonIndex,
-        ...(destructiveButtonIndex !== undefined &&
-        destructiveButtonIndex >= 0
-          ? { destructiveButtonIndex }
-          : {}),
-      },
-      (i) => {
-        setIsPressed(false);
-        const action = actions[i];
-        if (!action || action.kind === "cancel") return;
-
-        switch (action.kind) {
-          case "reply": {
-            // Set the reply target — the InlineCommentComposer subscribes
-            // to this store, auto-expands, and threads the next submit
-            // under entry.id via useCreateComment's `parentId`.
-            const actorName = getName(
-              entry.actor_type as "member" | "agent" | null | undefined,
-              entry.actor_id,
-            );
-            useReplyTargetStore.getState().setTarget({
-              commentId: entry.id,
-              actorName: actorName || "comment",
-              preview: entry.content ?? "",
-            });
-            return;
-          }
-          case "react":
-            // Present the nested React sheet from inside this completion
-            // callback — see file header for why.
-            presentReactSheet({
-              entry,
-              reactions,
-              userId,
-              wsSlug,
-              issueId,
-              toggle: (emoji, existing) =>
-                toggleReaction.mutate({
-                  commentId: entry.id,
-                  emoji,
-                  existing,
-                }),
-            });
-            return;
-          case "copy":
-            if (entry.content) {
-              Clipboard.setStringAsync(entry.content);
-              Haptics.notificationAsync(
-                Haptics.NotificationFeedbackType.Success,
-              ).catch(() => {});
-            }
-            return;
-          case "select":
-            useCommentSelectStore.getState().setSelecting(entry.id);
-            return;
-          case "copyLink": {
-            if (!canCopyLink) return;
-            const url = `${webUrl}/${wsSlug}/issue/${issueIdentifier}#comment-${entry.id}`;
-            Clipboard.setStringAsync(url);
+      switch (action) {
+        case "reply": {
+          const actorName = getName(
+            entry.actor_type as "member" | "agent" | null | undefined,
+            entry.actor_id,
+          );
+          useReplyTargetStore.getState().setTarget({
+            commentId: entry.id,
+            actorName: actorName || "comment",
+            preview: entry.content ?? "",
+          });
+          return;
+        }
+        case "react":
+          void presentReactSheet({
+            entry,
+            reactions,
+            userId,
+            wsSlug,
+            issueId,
+            toggle: (emoji, existing) =>
+              toggleReaction.mutate({
+                commentId: entry.id,
+                emoji,
+                existing,
+              }),
+          });
+          return;
+        case "copy":
+          if (entry.content) {
+            Clipboard.setStringAsync(entry.content);
             Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
             ).catch(() => {});
-            return;
           }
-          case "resolve":
-            resolveComment.mutate({
-              commentId: entry.id,
-              resolved: !entry.resolved_at,
-            });
-            return;
-          case "delete":
-            Alert.alert(
-              "Delete comment?",
-              "This comment will be permanently deleted. Replies in the thread will also be removed. This cannot be undone.",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Delete",
-                  style: "destructive",
-                  onPress: () => deleteComment.mutate(entry.id),
-                },
-              ],
-            );
-            return;
+          return;
+        case "select":
+          useCommentSelectStore.getState().setSelecting(entry.id);
+          return;
+        case "copyLink": {
+          if (!canCopyLink) return;
+          const url = `${webUrl}/${wsSlug}/issue/${issueIdentifier}#comment-${entry.id}`;
+          Clipboard.setStringAsync(url);
+          Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Success,
+          ).catch(() => {});
+          return;
         }
-      },
-    );
+        case "resolve":
+          resolveComment.mutate({
+            commentId: entry.id,
+            resolved: !entry.resolved_at,
+          });
+          return;
+        case "delete":
+          Alert.alert(
+            "Delete comment?",
+            "This comment will be permanently deleted. Replies in the thread will also be removed. This cannot be undone.",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Delete",
+                style: "destructive",
+                onPress: () => deleteComment.mutate(entry.id),
+              },
+            ],
+          );
+          return;
+      }
+    })();
   }, [
     entry,
     issueId,
@@ -203,7 +176,7 @@ export function useCommentLongPress(
   return { onLongPress, isPressed };
 }
 
-function presentReactSheet(args: {
+async function presentReactSheet(args: {
   entry: TimelineEntry;
   reactions: Reaction[];
   userId: string | undefined;
@@ -213,35 +186,30 @@ function presentReactSheet(args: {
 }) {
   const { entry, reactions, userId, wsSlug, issueId, toggle } = args;
   const emojis = QUICK_EMOJIS.slice(0, QUICK_ROW_SIZE);
-  const options = [...emojis, "More reactions…", "Cancel"];
-  const cancelButtonIndex = options.length - 1;
-
-  ActionSheetIOS.showActionSheetWithOptions(
-    { options, cancelButtonIndex },
-    (i) => {
-      if (i === cancelButtonIndex) return;
-      if (i === emojis.length) {
-        if (!wsSlug) return;
-        router.push({
-          pathname:
-            "/[workspace]/issue/[id]/comment/[commentId]/emoji-picker",
-          params: {
-            workspace: wsSlug,
-            id: issueId,
-            commentId: entry.id,
-          },
-        });
-        return;
-      }
-      const emoji = emojis[i];
-      if (!emoji) return;
-      const existing = reactions.find(
-        (r) =>
-          r.emoji === emoji &&
-          r.actor_type === "member" &&
-          r.actor_id === userId,
-      );
-      toggle(emoji, existing);
-    },
+  const action = await showActionMenu({
+    options: [
+      ...emojis.map((emoji) => ({ key: emoji, label: emoji })),
+      { key: "more", label: "More reactions…" },
+    ],
+  });
+  if (!action) return;
+  if (action === "more") {
+    if (!wsSlug) return;
+    router.push({
+      pathname: "/[workspace]/issue/[id]/comment/[commentId]/emoji-picker",
+      params: {
+        workspace: wsSlug,
+        id: issueId,
+        commentId: entry.id,
+      },
+    });
+    return;
+  }
+  const existing = reactions.find(
+    (r) =>
+      r.emoji === action &&
+      r.actor_type === "member" &&
+      r.actor_id === userId,
   );
+  toggle(action, existing);
 }

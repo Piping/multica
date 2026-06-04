@@ -9,7 +9,7 @@
  * d.toISOString().
  */
 import { useState, useEffect, useImperativeHandle, forwardRef } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 interface Props {
@@ -44,7 +44,7 @@ export const DueDatePickerBody = forwardRef<DueDatePickerBodyHandle, Props>(
         <DateTimePicker
           value={draft}
           mode="date"
-          display="inline"
+          display={Platform.OS === "ios" ? "inline" : "default"}
           onChange={(_event, selected) => {
             if (selected) setDraft(selected);
           }}

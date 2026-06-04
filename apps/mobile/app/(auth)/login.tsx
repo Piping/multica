@@ -1,17 +1,22 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { Text } from "@/components/ui/text";
 import { TextField } from "@/components/ui/text-field";
 import { Button } from "@/components/ui/button";
 import { MulticaLogo } from "@/components/brand/multica-logo";
 import { useAuthStore } from "@/data/auth-store";
+import { BACKEND_OPTIONS, useBackendStore } from "@/data/backend-config";
+import { showActionMenu } from "@/lib/action-menu";
 import { mapAuthError } from "@/lib/auth-error";
 
 export default function Login() {
   const sendCode = useAuthStore((s) => s.sendCode);
+  const currentBackend = useBackendStore((s) => s.current);
+  const setBackend = useBackendStore((s) => s.setBackend);
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,53 +38,91 @@ export default function Login() {
     }
   };
 
+  const onSelectBackend = () => {
+    void (async () => {
+      const nextApiUrl = await showActionMenu({
+        title: "Default backend",
+        message: "Choose which Multica deployment this device signs into.",
+        options: BACKEND_OPTIONS.map((backend) => ({
+          key: backend.apiUrl,
+          label:
+            backend.apiUrl === currentBackend.apiUrl
+              ? `${backend.label} (Current)`
+              : backend.label,
+        })),
+      });
+      if (!nextApiUrl || nextApiUrl === currentBackend.apiUrl) return;
+      const nextBackend = BACKEND_OPTIONS.find(
+        (backend) => backend.apiUrl === nextApiUrl,
+      );
+      if (!nextBackend) return;
+      await setBackend(nextBackend);
+    })();
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollView
         className="flex-1"
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "center",
+          paddingHorizontal: 24,
+          rowGap: 24,
+        }}
+        keyboardShouldPersistTaps="handled"
+        bottomOffset={16}
       >
-        <View className="flex-1 justify-center px-6 gap-6">
-          <View className="items-center gap-3">
-            <MulticaLogo size={32} />
-            <View className="gap-1 items-center">
-              <Text className="text-2xl font-semibold text-foreground">
-                Sign in to Multica
-              </Text>
-              <Text className="text-sm text-muted-foreground text-center">
-                Enter your email and we&apos;ll send you a verification code.
-              </Text>
-            </View>
+        <View className="items-center gap-3">
+          <MulticaLogo size={32} />
+          <View className="gap-1 items-center">
+            <Text className="text-2xl font-semibold text-foreground">
+              Sign in to Multica
+            </Text>
+            <Text className="text-sm text-muted-foreground text-center">
+              Enter your email and we&apos;ll send you a verification code.
+            </Text>
           </View>
-
-          <View className="gap-3">
-            <TextField
-              autoCapitalize="none"
-              autoComplete="email"
-              autoFocus
-              keyboardType="email-address"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              onSubmitEditing={onSubmit}
-              returnKeyType="send"
-              editable={!submitting}
-              invalid={!!error}
-            />
-            {error ? (
-              <Text className="text-sm text-destructive">{error}</Text>
-            ) : null}
-          </View>
-
-          <Button
-            size="lg"
-            disabled={submitting || !email.trim()}
-            onPress={onSubmit}
-          >
-            <Text>{submitting ? "Sending..." : "Send code"}</Text>
-          </Button>
         </View>
-      </KeyboardAvoidingView>
+
+        <View className="gap-3">
+          <Pressable
+            onPress={onSelectBackend}
+            className="rounded-md border border-border bg-card px-4 py-3 active:bg-secondary"
+          >
+            <Text className="text-sm font-medium text-foreground">
+              Backend
+            </Text>
+            <Text className="mt-1 text-sm text-muted-foreground">
+              {currentBackend.label} · {currentBackend.subtitle}
+            </Text>
+          </Pressable>
+          <TextField
+            autoCapitalize="none"
+            autoComplete="email"
+            autoFocus
+            keyboardType="email-address"
+            placeholder="you@example.com"
+            value={email}
+            onChangeText={setEmail}
+            onSubmitEditing={onSubmit}
+            returnKeyType="send"
+            editable={!submitting}
+            invalid={!!error}
+          />
+          {error ? (
+            <Text className="text-sm text-destructive">{error}</Text>
+          ) : null}
+        </View>
+
+        <Button
+          size="lg"
+          disabled={submitting || !email.trim()}
+          onPress={onSubmit}
+        >
+          <Text>{submitting ? "Sending..." : "Send code"}</Text>
+        </Button>
+      </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

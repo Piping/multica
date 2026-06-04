@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Check,
   ChevronDown,
@@ -62,7 +63,10 @@ import {
   useCreateChatSession,
   useDeleteChatSession,
   useMarkChatSessionRead,
+  useRegenerateLastChatMessage,
+  useResendLastChatMessage,
   useUpdateChatSession,
+  useWithdrawLastChatMessage,
 } from "@multica/core/chat/mutations";
 import { useChatStore } from "@multica/core/chat";
 import { ChatInput } from "./chat-input";
@@ -122,6 +126,9 @@ export function ChatPage() {
   const qc = useQueryClient();
   const createSession = useCreateChatSession();
   const markRead = useMarkChatSessionRead();
+  const withdrawLastChatMessage = useWithdrawLastChatMessage();
+  const regenerateLastChatMessage = useRegenerateLastChatMessage();
+  const resendLastChatMessage = useResendLastChatMessage();
   const currentMember = members.find((member) => member.user_id === user?.id);
   const memberRole = currentMember?.role;
   const availableAgents = agents.filter(
@@ -332,6 +339,22 @@ export function ChatPage() {
     () => new Set((pendingTasks?.tasks ?? []).map((task) => task.chat_session_id)),
     [pendingTasks],
   );
+  const lastUserMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const candidate = messages[i];
+      if (candidate && candidate.role === "user") return candidate;
+    }
+    return null;
+  }, [messages]);
+  const lastTurnActionPending =
+    withdrawLastChatMessage.isPending ||
+    regenerateLastChatMessage.isPending ||
+    resendLastChatMessage.isPending;
+  const canActOnLastTurn =
+    !!activeSessionId &&
+    !!currentSession &&
+    currentSession.status === "active" &&
+    !!lastUserMessage;
 
   const awaitingInitialSelection =
     !sessionsLoading &&
@@ -345,6 +368,42 @@ export function ChatPage() {
   const headerTitle = currentSession?.title?.trim() || t(($) => $.window.untitled);
   const headerAgent =
     (currentSession ? agentById.get(currentSession.agent_id) ?? null : null) ?? activeAgent;
+
+  const handleWithdrawLastTurn = useCallback(async () => {
+    if (!activeSessionId) return;
+    try {
+      await withdrawLastChatMessage.mutateAsync(activeSessionId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(($) => $.page.undo_last_failed));
+    }
+  }, [activeSessionId, t, withdrawLastChatMessage]);
+
+  const handleRegenerateLastTurn = useCallback(async () => {
+    if (!activeSessionId) return;
+    try {
+      await regenerateLastChatMessage.mutateAsync(activeSessionId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(($) => $.page.regenerate_last_failed));
+    }
+  }, [activeSessionId, regenerateLastChatMessage, t]);
+
+  const handleResendLastTurn = useCallback(async () => {
+    if (!activeSessionId) return;
+    try {
+      await resendLastChatMessage.mutateAsync(activeSessionId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t(($) => $.page.resend_last_failed));
+    }
+  }, [activeSessionId, resendLastChatMessage, t]);
+
+  const lastTurnActions = (
+    <LastTurnActionsMenu
+      disabled={!canActOnLastTurn || lastTurnActionPending}
+      onWithdraw={handleWithdrawLastTurn}
+      onRegenerate={handleRegenerateLastTurn}
+      onResend={handleResendLastTurn}
+    />
+  );
 
   const sidebarContent = (
     <ChatSessionSidebar
@@ -392,6 +451,13 @@ export function ChatPage() {
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium">{headerTitle}</div>
           </div>
+          {currentSession && lastTurnActions}
+        </div>
+      )}
+
+      {!showTopBar && currentSession && (
+        <div className="flex shrink-0 justify-end px-3 pt-3">
+          {lastTurnActions}
         </div>
       )}
 
@@ -476,6 +542,49 @@ export function ChatPage() {
         )}
       </div>
     </>
+  );
+}
+
+function LastTurnActionsMenu({
+  disabled,
+  onWithdraw,
+  onRegenerate,
+  onResend,
+}: {
+  disabled: boolean;
+  onWithdraw: () => void;
+  onRegenerate: () => void;
+  onResend: () => void;
+}) {
+  const { t } = useT("chat");
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+            aria-label={t(($) => $.page.last_turn_actions_aria)}
+            disabled={disabled}
+          />
+        }
+      >
+        <MoreHorizontal className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem disabled={disabled} onSelect={onWithdraw}>
+          {t(($) => $.page.undo_last)}
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={disabled} onSelect={onRegenerate}>
+          {t(($) => $.page.regenerate_last)}
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={disabled} onSelect={onResend}>
+          {t(($) => $.page.resend_last)}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
