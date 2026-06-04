@@ -1,11 +1,9 @@
 /**
  * Shared message composer used by both the issue-comment thread and the
- * chat tab. Two visual states:
+ * chat tab. Always renders as a full input card:
  *
- *   collapsed → pill button (configurable label / icon). Minimal vertical
- *               footprint so the list above gets the full screen.
- *   expanded  → optional reply chip → chip row (@ + image + file) →
- *               plain TextInput → toolbar (`@ 📷 📎 ──── [➤ or Stop]`).
+ *   optional reply chip → chip row (@ + image + file) → plain TextInput
+ *   → toolbar (`@ 📷 📎 ──── [➤ or Stop]`).
  *
  * Mentions / images / files all live in the chip row OUTSIDE the text
  * input. The input itself is a plain RN `<TextInput multiline>` — no
@@ -73,8 +71,8 @@ export interface MessageComposerReplyTarget {
 interface Props {
   /** Submit callback. Composer awaits this; on rejection it restores text,
    *  attachments, and mentions so the user can retry without losing
-   *  context. Resolved promise → text + chips cleared, composer collapses
-   *  back to pill. */
+   *  context. Resolved promise clears the current draft and dismisses the
+   *  keyboard. */
   onSubmit: (args: {
     content: string;
     attachmentIds: string[];
@@ -91,8 +89,6 @@ interface Props {
   uploadContext?: { issueId?: string; commentId?: string };
 
   placeholder?: string;
-  pillLabel?: string;
-  pillIcon?: keyof typeof Ionicons.glyphMap;
 
   /** Optional controlled-text mode. When `value` + `onChangeText` are
    *  both provided, the parent owns the draft (chat: persists to its
@@ -105,10 +101,10 @@ interface Props {
   replyTarget?: MessageComposerReplyTarget | null;
   onClearReplyTarget?: () => void;
 
-  /** Composer enters "auto-expanded + focused" mode when this changes to
-   *  a truthy stable key. Comment uses it to react to long-press → reply
-   *  flow. Chat doesn't pass it. */
-  expandTrigger?: string | null;
+  /** Focus request key. When this changes to a truthy stable value, the
+   *  composer focuses its TextInput. Comment uses it to react to
+   *  long-press → reply flow. Chat doesn't pass it. */
+  focusTrigger?: string | null;
 
   /** When `isSending` is true AND `renderStop` is provided, the trailing
    *  send button is replaced by whatever `renderStop` returns. Chat uses
@@ -116,9 +112,8 @@ interface Props {
   isSending?: boolean;
   renderStop?: () => ReactNode;
 
-  /** Hard-disable. Used when chat has no usable agent. The pill shows
-   *  `disabledReason` instead of `pillLabel`, and the pill is
-   *  non-interactive (cannot expand). */
+  /** Hard-disable. Used when chat has no usable agent or the session is
+   *  archived. */
   disabled?: boolean;
   disabledReason?: string;
 
@@ -157,13 +152,11 @@ export function MessageComposer({
   mentionPickerPath,
   uploadContext,
   placeholder = "Type a message…",
-  pillLabel = "Type a message…",
-  pillIcon = "chatbubble-ellipses-outline",
   value: controlledValue,
   onChangeText: controlledOnChange,
   replyTarget = null,
   onClearReplyTarget,
-  expandTrigger,
+  focusTrigger,
   isSending = false,
   renderStop,
   disabled = false,
@@ -174,7 +167,6 @@ export function MessageComposer({
   const theme = THEME[colorScheme];
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
-  const [expanded, setExpanded] = useState(false);
   const [internalText, setInternalText] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachmentItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -208,18 +200,13 @@ export function MessageComposer({
     };
   }, [clearMentions]);
 
-  // Auto-expand + focus when an `expandTrigger` changes. Comment uses
-  // this to react to the long-press → reply flow setting a reply target.
   const triggerSeen = useRef<string | null>(null);
-  if (
-    expandTrigger &&
-    triggerSeen.current !== expandTrigger &&
-    !disabled
-  ) {
-    triggerSeen.current = expandTrigger;
-    setExpanded(true);
+  useEffect(() => {
+    if (!focusTrigger || disabled) return;
+    if (triggerSeen.current === focusTrigger) return;
+    triggerSeen.current = focusTrigger;
     requestAnimationFrame(() => inputRef.current?.focus());
-  }
+  }, [focusTrigger, disabled]);
 
   const hasInFlightUpload = attachments.some((a) => a.status === "uploading");
   const canSend =
@@ -228,17 +215,6 @@ export function MessageComposer({
     !submitting &&
     !hasInFlightUpload &&
     (text.trim().length > 0 || mentions.length > 0);
-
-  const expand = useCallback(() => {
-    if (disabled) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    setExpanded(true);
-    // Tapping the pill = "I want to write a new message". Drop any
-    // lingering reply target so a stale chip from a prior long-press →
-    // dismiss-without-send cycle doesn't bleed into the fresh draft.
-    onClearReplyTarget?.();
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }, [disabled, onClearReplyTarget]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSend) return;
@@ -275,11 +251,9 @@ export function MessageComposer({
       });
       // Success → fully exit composing mode. Explicit triple-step
       // because a missing blur leaves the keyboard up; missing
-      // Keyboard.dismiss races on iOS when focus is in-flight; missing
-      // setExpanded(false) leaves the expanded card on screen.
+      // Keyboard.dismiss races on iOS when focus is in-flight.
       inputRef.current?.blur();
       Keyboard.dismiss();
-      setExpanded(false);
     } catch {
       setText(textSnap);
       setAttachments(attachmentsSnap);
@@ -430,52 +404,10 @@ export function MessageComposer({
     router.push(mentionPickerPath);
   }, [mentionPickerPath]);
 
-  /** Auto-collapse to pill when input loses focus AND nothing's worth
-   *  keeping the composer expanded for. Deferred one tick so a toolbar
-   *  IconButton tap (which briefly resigns first responder) doesn't
-   *  trigger a collapse before its onPress runs. */
-  const onBlur = useCallback(() => {
-    setTimeout(() => {
-      const empty =
-        text.trim().length === 0 &&
-        attachments.length === 0 &&
-        mentions.length === 0;
-      if (empty && !inputRef.current?.isFocused()) {
-        setExpanded(false);
-        onClearReplyTarget?.();
-      }
-    }, 80);
-  }, [text, attachments.length, mentions.length, onClearReplyTarget]);
-
-  const pillContent = (
-    <View
-      className="border-t border-border bg-background px-3 pt-2"
-      style={{ paddingBottom: (manageKeyboard ? insets.bottom : 0) + 8 }}
-    >
-      <Pressable
-        onPress={expand}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel={pillLabel}
-        accessibilityState={{ disabled }}
-        className="flex-row items-center gap-2 h-11 px-4 rounded-full bg-secondary active:opacity-80"
-      >
-        <Ionicons
-          name={pillIcon}
-          size={18}
-          color={theme.mutedForeground}
-        />
-        <Text className="text-base text-muted-foreground">
-          {disabled && disabledReason ? disabledReason : pillLabel}
-        </Text>
-      </Pressable>
-    </View>
-  );
-
-  const expandedContent = (
+  const composerContent = (
     <View
       className="bg-background px-3 pt-2 gap-2"
-      style={{ paddingBottom: (manageKeyboard ? insets.bottom : 0) + 4 }}
+      style={{ paddingBottom: 4 }}
     >
       {replyTarget && (
         <View className="px-3 py-1.5 rounded-md bg-secondary/60 gap-0.5">
@@ -535,8 +467,7 @@ export function MessageComposer({
           ref={inputRef}
           value={text}
           onChangeText={setText}
-          onBlur={onBlur}
-          placeholder={placeholder}
+          placeholder={disabled && disabledReason ? disabledReason : placeholder}
           placeholderTextColor={theme.mutedForeground}
           multiline
           editable={!disabled}
@@ -592,15 +523,13 @@ export function MessageComposer({
     </View>
   );
 
-  const body = expanded ? expandedContent : pillContent;
-
   // Escape hatch for a parent container that already applies its own
   // keyboard lift/inset policy.
-  if (!manageKeyboard) return body;
+  if (!manageKeyboard) return composerContent;
 
   return (
-    <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
-      {body}
+    <KeyboardStickyView offset={{ closed: insets.bottom, opened: 0 }}>
+      {composerContent}
     </KeyboardStickyView>
   );
 }

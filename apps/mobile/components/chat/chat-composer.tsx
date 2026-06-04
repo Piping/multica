@@ -54,7 +54,7 @@ interface Props {
   /** Hard-disable typing + send. Used when there's no usable agent in the
    *  workspace or the session is archived (legacy). */
   disabled?: boolean;
-  /** When `disabled`, replaces the pill label with the reason. */
+  /** When `disabled`, explains why the card is read-only. */
   disabledReason?: string;
 }
 
@@ -103,14 +103,6 @@ export function ChatComposer({
         params: { workspace: wsSlug ?? "", mode: "chat" },
       }}
       placeholder={sending ? "Agent is working…" : "Message…"}
-      pillLabel={
-        sending
-          ? "Agent is working…"
-          : disabled
-            ? (disabledReason ?? "Chat unavailable")
-            : "Message…"
-      }
-      pillIcon="chatbubble-ellipses-outline"
       disabled={disabled}
       disabledReason={disabledReason}
       isSending={sending}

@@ -76,6 +76,21 @@ export default function TabsLayout() {
         }}
       >
         <Tabs.Screen
+          name="chat"
+          options={{
+            title: "Chat",
+            tabBarBadge: chatBadge,
+            tabBarBadgeStyle: BADGE_STYLE,
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons
+                name={focused ? "chatbubble" : "chatbubble-outline"}
+                color={color}
+                size={size}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="inbox"
           options={{
             title: "Inbox",
@@ -97,21 +112,6 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size, focused }) => (
               <Ionicons
                 name={focused ? "list" : "list-outline"}
-                color={color}
-                size={size}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="chat"
-          options={{
-            title: "Chat",
-            tabBarBadge: chatBadge,
-            tabBarBadgeStyle: BADGE_STYLE,
-            tabBarIcon: ({ color, size, focused }) => (
-              <Ionicons
-                name={focused ? "chatbubble" : "chatbubble-outline"}
                 color={color}
                 size={size}
               />

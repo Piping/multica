@@ -384,9 +384,9 @@ export function TimelineList({
         ListHeaderComponent={ListHeader}
         // Drag-to-dismiss keyboard — when the user scrolls the timeline
         // while the composer keyboard is up, the keyboard slides down
-        // interactively (iMessage / WhatsApp / Slack idiom). Pairs with the
-        // composer's `onBlur` → auto-collapse to pill: scroll dismisses
-        // keyboard → TextInput blurs → composer collapses if empty.
+        // interactively (iMessage / WhatsApp / Slack idiom). The composer
+        // itself stays mounted as a full input card; only the keyboard
+        // dismisses.
         keyboardDismissMode="on-drag"
         // Tap-on-row inside the list (long-press a comment, tap a
         // reaction) should still register even when the keyboard is up.

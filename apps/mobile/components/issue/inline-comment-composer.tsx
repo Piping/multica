@@ -57,8 +57,6 @@ export function InlineCommentComposer({ issueId }: { issueId: string }) {
       }}
       uploadContext={{ issueId }}
       placeholder="Add a comment…"
-      pillLabel="Add a comment, @ to mention…"
-      pillIcon="chatbubble-ellipses-outline"
       replyTarget={
         replyTarget
           ? {
@@ -68,7 +66,7 @@ export function InlineCommentComposer({ issueId }: { issueId: string }) {
           : null
       }
       onClearReplyTarget={clearReplyTarget}
-      expandTrigger={replyTarget?.commentId ?? null}
+      focusTrigger={replyTarget?.commentId ?? null}
     />
   );
 }
