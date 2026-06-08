@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import { ScrollView, View } from "react-native";
+import { Platform, ScrollView, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import type { TimelineEntry } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
@@ -20,7 +21,10 @@ export default function IssueHistoryRoute() {
   );
 
   return (
-    <View className="flex-1 bg-background">
+    <SafeAreaView
+      className="flex-1 bg-background"
+      edges={Platform.OS === "android" ? ["top"] : []}
+    >
       <View className="px-4 pt-4 pb-3">
         <Text className="text-base font-semibold text-foreground">
           History
@@ -46,7 +50,7 @@ export default function IssueHistoryRoute() {
           )}
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

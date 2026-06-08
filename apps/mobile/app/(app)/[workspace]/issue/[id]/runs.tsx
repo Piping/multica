@@ -12,8 +12,9 @@
  * Past-row tap is a no-op in v1 — transcript drilldown is deferred.
  */
 import { useMemo } from "react";
-import { ScrollView, View } from "react-native";
+import { Platform, ScrollView, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentTask } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
@@ -65,7 +66,10 @@ export default function IssueRunsRoute() {
   }, [allTasks]);
 
   return (
-    <View className="flex-1">
+    <SafeAreaView
+      className="flex-1 bg-background"
+      edges={Platform.OS === "android" ? ["top"] : []}
+    >
       <View className="px-4 pt-4 pb-3">
         <Text className="text-base font-semibold text-foreground">
           Agent Runs
@@ -89,7 +93,7 @@ export default function IssueRunsRoute() {
           ) : null}
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

@@ -92,7 +92,6 @@ import { Text } from "@/components/ui/text";
 import { IssueHeaderCard } from "./issue-header-card";
 import { IssueDescription } from "./issue-description";
 import { IssueReactionRow } from "./issue-reaction-row";
-import { ActivityRow } from "./activity-row";
 import { CommentCard } from "./comment-card";
 import { useLastViewedStore } from "@/data/stores/last-viewed-store";
 import { coalesceTimeline } from "@/lib/timeline-coalesce";
@@ -133,7 +132,7 @@ const AT_BOTTOM_SLACK_PX = 80;
 
 /** Sentinel id for the "New since last view" divider row injected into the
  *  FlatList data. Picked because it can never collide with a real comment
- *  / activity uuid. */
+ *  uuid. */
 const DIVIDER_ID = "__divider__";
 
 export function TimelineList({
@@ -152,12 +151,12 @@ export function TimelineList({
   // passes through to comment cards / chip rows / reactions normally.
   const selectingId = useCommentSelectStore((s) => s.selectingId);
 
-  // Server already returns ASC oldest-first. Pipeline:
-  //   1. coalesceTimeline → merge consecutive identical activities
-  //   2. buildTimelineRows → reorder so replies sit adjacent to their parent
-  //      and tag each reply with `replyTo` for the card to render the
-  //      "↪ Replying to" header + thread-line border. This is the mobile
-  //      flat-list interpretation of web's recursive reply tree.
+  // Thread-first main surface:
+  //   1. coalesceTimeline keeps activity semantics available for the History
+  //      sheet and preserves parity with any downstream derived views
+  //   2. buildTimelineRows filters the main list down to comment threads and
+  //      sorts them by last activity time, so the user reads discussions
+  //      rather than a mixed audit log
   const data = useMemo<TimelineRow[]>(() => {
     if (!entries) return [];
     return buildTimelineRows(coalesceTimeline(entries));
@@ -277,7 +276,7 @@ export function TimelineList({
       // renderItem keys off `id === DIVIDER_ID` and never reads other fields.
       entry: {
         id: DIVIDER_ID,
-        type: "activity",
+        type: "comment",
         created_at: "",
         actor_type: "",
         actor_id: "",
@@ -357,7 +356,7 @@ export function TimelineList({
       <IssueReactionRow issue={issue} />
       <View className="px-4 pt-4 pb-2 border-t border-border">
         <Text className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-          Activity
+          Threads
         </Text>
       </View>
       {timelineLoading && (!entries || entries.length === 0) ? (
@@ -437,7 +436,7 @@ export function TimelineList({
           if (item.entry.id === DIVIDER_ID) {
             return <UnreadDivider />;
           }
-          return item.entry.type === "comment" ? (
+          return (
             <CommentCard
               entry={item.entry}
               replies={item.replies}
@@ -446,8 +445,6 @@ export function TimelineList({
               highlightedCommentId={highlightedId}
               activeTasks={activeTasksByCommentId.get(item.entry.id) ?? []}
             />
-          ) : (
-            <ActivityRow entry={item.entry} />
           );
         }}
         onScroll={handleScroll}
