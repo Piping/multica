@@ -5,9 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -58,6 +62,13 @@ var skillImportCmd = &cobra.Command{
 	RunE:  runSkillImport,
 }
 
+var skillUploadCmd = &cobra.Command{
+	Use:   "upload <dir>",
+	Short: "Upload a local skill directory (SKILL.md + supporting files)",
+	Args:  exactArgs(1),
+	RunE:  runSkillUpload,
+}
+
 // Skill file subcommands.
 
 var skillFilesCmd = &cobra.Command{
@@ -93,6 +104,7 @@ func init() {
 	skillCmd.AddCommand(skillUpdateCmd)
 	skillCmd.AddCommand(skillDeleteCmd)
 	skillCmd.AddCommand(skillImportCmd)
+	skillCmd.AddCommand(skillUploadCmd)
 	skillCmd.AddCommand(skillFilesCmd)
 
 	skillFilesCmd.AddCommand(skillFilesListCmd)
@@ -125,6 +137,12 @@ func init() {
 	// skill import
 	skillImportCmd.Flags().String("url", "", "URL to import from (required)")
 	skillImportCmd.Flags().String("output", "json", "Output format: table or json")
+
+	// skill upload
+	skillUploadCmd.Flags().Bool("update", true, "Update an existing skill with the same name instead of failing")
+	skillUploadCmd.Flags().Bool("include-hidden", false, "Include hidden files and directories when uploading")
+	skillUploadCmd.Flags().Bool("skip-binary", true, "Skip binary and non-UTF-8 files instead of failing")
+	skillUploadCmd.Flags().String("output", "json", "Output format: table or json")
 
 	// skill files list
 	skillFilesListCmd.Flags().String("output", "table", "Output format: table or json")
@@ -356,6 +374,262 @@ func runSkillImport(cmd *cobra.Command, _ []string) error {
 
 	fmt.Printf("Skill imported: %s (%s)\n", strVal(result, "name"), strVal(result, "id"))
 	return nil
+}
+
+type localSkillFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+type localSkillUploadResult struct {
+	SkillID       string           `json:"skill_id"`
+	Name          string           `json:"name"`
+	Operation     string           `json:"operation"`
+	UploadedFiles []string         `json:"uploaded_files"`
+	SkippedFiles  []string         `json:"skipped_files"`
+	Skill         map[string]any   `json:"skill"`
+	Files         []localSkillFile `json:"files"`
+}
+
+func runSkillUpload(cmd *cobra.Command, args []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	if client.WorkspaceID == "" {
+		if _, err := requireWorkspaceID(cmd); err != nil {
+			return err
+		}
+	}
+
+	dir, err := filepath.Abs(args[0])
+	if err != nil {
+		return fmt.Errorf("resolve skill dir: %w", err)
+	}
+	skill, err := readLocalSkillDirectory(dir, skillUploadOptions{
+		IncludeHidden: boolFlag(cmd, "include-hidden"),
+		SkipBinary:    boolFlag(cmd, "skip-binary"),
+	})
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	existing, err := findSkillByName(ctx, client, skill.Name)
+	if err != nil {
+		return err
+	}
+	updateExisting := boolFlag(cmd, "update")
+
+	body := map[string]any{
+		"name":        skill.Name,
+		"description": skill.Description,
+		"content":     skill.Content,
+	}
+	var result map[string]any
+	operation := "created"
+	switch {
+	case existing == nil:
+		if err := client.PostJSON(ctx, "/api/skills", body, &result); err != nil {
+			return fmt.Errorf("create skill: %w", err)
+		}
+	case !updateExisting:
+		return fmt.Errorf("skill %q already exists (id %s); rerun with --update to replace content and supporting files", skill.Name, strVal(existing, "id"))
+	default:
+		operation = "updated"
+		if err := client.PutJSON(ctx, "/api/skills/"+strVal(existing, "id"), body, &result); err != nil {
+			return fmt.Errorf("update skill: %w", err)
+		}
+	}
+
+	skillID := strVal(result, "id")
+	uploaded := make([]string, 0, len(skill.Files))
+	for _, f := range skill.Files {
+		fileBody := map[string]any{
+			"path":    f.Path,
+			"content": f.Content,
+		}
+		if err := client.PutJSON(ctx, "/api/skills/"+skillID+"/files", fileBody, nil); err != nil {
+			return fmt.Errorf("upsert skill file %s: %w", f.Path, err)
+		}
+		uploaded = append(uploaded, f.Path)
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+	if output == "json" {
+		files := make([]localSkillFile, len(skill.Files))
+		for i, f := range skill.Files {
+			files[i] = localSkillFile{Path: f.Path, Content: f.Content}
+		}
+		return cli.PrintJSON(os.Stdout, localSkillUploadResult{
+			SkillID:       skillID,
+			Name:          skill.Name,
+			Operation:     operation,
+			UploadedFiles: uploaded,
+			SkippedFiles:  skill.Skipped,
+			Skill:         result,
+			Files:         files,
+		})
+	}
+
+	fmt.Printf("Skill %s: %s (%s)\n", operation, strVal(result, "name"), skillID)
+	fmt.Printf("Uploaded %d file(s)", len(uploaded))
+	if len(skill.Skipped) > 0 {
+		fmt.Printf(", skipped %d\n", len(skill.Skipped))
+		for _, skipped := range skill.Skipped {
+			fmt.Printf("  skipped: %s\n", skipped)
+		}
+		return nil
+	}
+	fmt.Println()
+	return nil
+}
+
+type skillUploadOptions struct {
+	IncludeHidden bool
+	SkipBinary    bool
+}
+
+type localSkillDefinition struct {
+	Name        string
+	Description string
+	Content     string
+	Files       []localSkillFile
+	Skipped     []string
+}
+
+func readLocalSkillDirectory(dir string, opts skillUploadOptions) (*localSkillDefinition, error) {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return nil, fmt.Errorf("stat skill dir: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("skill upload expects a directory, got %s", dir)
+	}
+
+	skillMDPath := filepath.Join(dir, "SKILL.md")
+	contentBytes, err := os.ReadFile(skillMDPath)
+	if err != nil {
+		return nil, fmt.Errorf("read SKILL.md: %w", err)
+	}
+	if !utf8.Valid(contentBytes) {
+		return nil, fmt.Errorf("SKILL.md must be valid UTF-8")
+	}
+
+	content := strings.ToValidUTF8(string(contentBytes), "")
+	name, description := parseLocalSkillFrontmatter(content)
+	if name == "" {
+		name = filepath.Base(dir)
+	}
+
+	result := &localSkillDefinition{
+		Name:        name,
+		Description: description,
+		Content:     content,
+		Files:       []localSkillFile{},
+		Skipped:     []string{},
+	}
+
+	err = filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == dir {
+			return nil
+		}
+
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		base := filepath.Base(path)
+
+		if !opts.IncludeHidden && strings.HasPrefix(base, ".") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			if base == "__pycache__" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if rel == "SKILL.md" {
+			return nil
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", rel, err)
+		}
+		if slices.Contains([]string{".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".zip", ".gz", ".tar", ".tgz", ".pyc"}, strings.ToLower(filepath.Ext(path))) {
+			if opts.SkipBinary {
+				result.Skipped = append(result.Skipped, rel)
+				return nil
+			}
+			return fmt.Errorf("binary file not supported: %s", rel)
+		}
+		if !utf8.Valid(data) {
+			if opts.SkipBinary {
+				result.Skipped = append(result.Skipped, rel)
+				return nil
+			}
+			return fmt.Errorf("non-UTF-8 file not supported: %s", rel)
+		}
+
+		result.Files = append(result.Files, localSkillFile{
+			Path:    rel,
+			Content: strings.ToValidUTF8(string(data), ""),
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func parseLocalSkillFrontmatter(content string) (name, description string) {
+	if !strings.HasPrefix(content, "---") {
+		return "", ""
+	}
+	end := strings.Index(content[3:], "---")
+	if end < 0 {
+		return "", ""
+	}
+	frontmatter := content[3 : 3+end]
+	for _, line := range strings.Split(frontmatter, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "name:") {
+			name = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "name:")), "\"'")
+		} else if strings.HasPrefix(line, "description:") {
+			description = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "description:")), "\"'")
+		}
+	}
+	return name, description
+}
+
+func findSkillByName(ctx context.Context, client *cli.APIClient, name string) (map[string]any, error) {
+	var skills []map[string]any
+	if err := client.GetJSON(ctx, "/api/skills", &skills); err != nil {
+		return nil, fmt.Errorf("list skills: %w", err)
+	}
+	for _, skill := range skills {
+		if strVal(skill, "name") == name {
+			return skill, nil
+		}
+	}
+	return nil, nil
+}
+
+func boolFlag(cmd *cobra.Command, name string) bool {
+	v, _ := cmd.Flags().GetBool(name)
+	return v
 }
 
 // ---------------------------------------------------------------------------

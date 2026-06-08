@@ -12,17 +12,23 @@
  *
  * Theme picker stays inline (3 fixed options, fits in one section).
  */
+import { useState } from "react";
 import { Alert, ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Workspace } from "@multica/core/types";
+import { CustomBackendModal } from "@/components/settings/custom-backend-modal";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BACKEND_OPTIONS, useBackendStore } from "@/data/backend-config";
+import {
+  BACKEND_OPTIONS,
+  type BackendOption,
+  useBackendStore,
+} from "@/data/backend-config";
 import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
@@ -39,6 +45,7 @@ const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   { value: "dark", label: "Dark" },
   { value: "system", label: "System" },
 ];
+const CUSTOM_BACKEND_ACTION = "__custom_backend__";
 
 function initialsOf(name: string | undefined): string {
   if (!name) return "?";
@@ -63,6 +70,7 @@ export default function SettingsPage() {
   const { data, isLoading, error } = useQuery(workspaceListOptions());
   const { preference, setPreference, colorScheme } = useColorScheme();
   const mutedFg = THEME[colorScheme].mutedForeground;
+  const [customBackendVisible, setCustomBackendVisible] = useState(false);
 
   const onSwitch = async (ws: Workspace) => {
     if (ws.slug === currentSlug) return;
@@ -92,42 +100,64 @@ export default function SettingsPage() {
   const goNotifications = () =>
     router.push(`/${currentSlug}/more/settings/notifications`);
 
+  const switchBackend = (nextBackend: BackendOption) => {
+    if (nextBackend.apiUrl === currentBackend.apiUrl) return;
+
+    Alert.alert(
+      "Switch backend?",
+      `Switch to ${nextBackend.label}? You'll need to sign in again on this device.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Switch",
+          onPress: async () => {
+            await setBackend(nextBackend);
+            await clearWorkspace();
+            await logout();
+            queryClient.clear();
+            router.replace("/login");
+          },
+        },
+      ],
+    );
+  };
+
   const onSelectBackend = () => {
     void (async () => {
-      const nextApiUrl = await showActionMenu({
+      const action = await showActionMenu({
         title: "Default backend",
         message: "Switching backend signs this device out immediately.",
-        options: BACKEND_OPTIONS.map((backend) => ({
-          key: backend.apiUrl,
-          label:
-            backend.apiUrl === currentBackend.apiUrl
-              ? `${backend.label} (Current)`
-              : backend.label,
-        })),
-      });
-      if (!nextApiUrl || nextApiUrl === currentBackend.apiUrl) return;
-      const nextBackend = BACKEND_OPTIONS.find(
-        (backend) => backend.apiUrl === nextApiUrl,
-      );
-      if (!nextBackend) return;
-
-      Alert.alert(
-        "Switch backend?",
-        `Switch to ${nextBackend.label}? You'll need to sign in again on this device.`,
-        [
-          { text: "Cancel", style: "cancel" },
+        options: [
+          ...BACKEND_OPTIONS.map((backend) => ({
+            key: backend.apiUrl,
+            label:
+              backend.apiUrl === currentBackend.apiUrl
+                ? `${backend.label} (Current)`
+                : backend.label,
+          })),
           {
-            text: "Switch",
-            onPress: async () => {
-              await setBackend(nextBackend);
-              await clearWorkspace();
-              await logout();
-              queryClient.clear();
-              router.replace("/login");
-            },
+            key: CUSTOM_BACKEND_ACTION,
+            label:
+              currentBackend.apiUrl ===
+              BACKEND_OPTIONS.find(
+                (backend) => backend.apiUrl === currentBackend.apiUrl,
+              )?.apiUrl
+                ? "Custom backend..."
+                : "Edit custom backend...",
           },
         ],
+      });
+      if (!action) return;
+      if (action === CUSTOM_BACKEND_ACTION) {
+        setCustomBackendVisible(true);
+        return;
+      }
+      if (action === currentBackend.apiUrl) return;
+      const nextBackend = BACKEND_OPTIONS.find(
+        (backend) => backend.apiUrl === action,
       );
+      if (!nextBackend) return;
+      switchBackend(nextBackend);
     })();
   };
 
@@ -242,6 +272,19 @@ export default function SettingsPage() {
           <Text>Sign out</Text>
         </Button>
       </View>
+
+      <CustomBackendModal
+        visible={customBackendVisible}
+        title="Custom backend"
+        message="Switch this device to a manually entered Multica deployment."
+        initialBackend={currentBackend}
+        saveLabel="Switch"
+        onClose={() => setCustomBackendVisible(false)}
+        onSave={(backend) => {
+          setCustomBackendVisible(false);
+          switchBackend(backend);
+        }}
+      />
     </ScrollView>
   );
 }

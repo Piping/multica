@@ -31,6 +31,11 @@ export interface BackendOption {
   subtitle: string;
 }
 
+interface StoredBackendSelection {
+  apiUrl: string;
+  webUrl?: string | null;
+}
+
 const AGENT_DIFF_BACKEND = createBackendOption(
   "agent-diff-host",
   "agent.diff.host",
@@ -73,15 +78,16 @@ export const useBackendStore = create<BackendState>((set) => ({
   hydrated: false,
 
   restore: async () => {
-    let storedApiUrl: string | null = null;
+    let storedValue: string | null = null;
     try {
-      storedApiUrl = await SecureStore.getItemAsync(STORAGE_KEY);
+      storedValue = await SecureStore.getItemAsync(STORAGE_KEY);
     } catch {
-      storedApiUrl = null;
+      storedValue = null;
     }
 
-    const next = storedApiUrl
-      ? resolveBackendOption(storedApiUrl)
+    const storedSelection = parseStoredBackendSelection(storedValue);
+    const next = storedSelection
+      ? resolveBackendOption(storedSelection.apiUrl, storedSelection.webUrl)
       : DEFAULT_BACKEND;
     set({ current: next, hydrated: true });
     return next;
@@ -94,7 +100,13 @@ export const useBackendStore = create<BackendState>((set) => ({
       await SecureStore.deleteItemAsync(STORAGE_KEY);
       return;
     }
-    await SecureStore.setItemAsync(STORAGE_KEY, next.apiUrl);
+    await SecureStore.setItemAsync(
+      STORAGE_KEY,
+      JSON.stringify({
+        apiUrl: next.apiUrl,
+        webUrl: next.webUrl,
+      } satisfies StoredBackendSelection),
+    );
   },
 }));
 
@@ -112,6 +124,18 @@ export function getCurrentWebUrl(): string | null {
 
 export function getCurrentWsUrl(): string {
   return deriveWsUrl(getCurrentApiUrl());
+}
+
+export function createCustomBackend(
+  apiUrl: string,
+  webUrl?: string | null,
+): BackendOption {
+  const normalizedApiUrl = normalizeHttpUrl(apiUrl, "apiUrl");
+  const normalizedWebUrl =
+    typeof webUrl === "string" && webUrl.trim().length > 0
+      ? normalizeHttpUrl(webUrl, "webUrl")
+      : deriveAppUrl(normalizedApiUrl);
+  return resolveBackendOption(normalizedApiUrl, normalizedWebUrl);
 }
 
 function createBackendOption(
@@ -176,6 +200,49 @@ function deriveWsUrl(apiUrl: string): string {
   url.search = "";
   url.hash = "";
   return trimTrailingSlash(url.toString());
+}
+
+function deriveAppUrl(apiUrl: string): string {
+  const url = new URL(apiUrl);
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+    url.port = "3000";
+  } else if (
+    url.hostname.startsWith("api.") &&
+    url.hostname.split(".").length >= 3
+  ) {
+    url.hostname = url.hostname.slice("api.".length);
+  }
+  return trimTrailingSlash(url.toString());
+}
+
+function parseStoredBackendSelection(
+  raw: string | null,
+): StoredBackendSelection | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  if (!trimmed.startsWith("{")) {
+    return { apiUrl: trimmed, webUrl: null };
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const apiUrl =
+      typeof parsed.apiUrl === "string" ? parsed.apiUrl.trim() : "";
+    const webUrl =
+      typeof parsed.webUrl === "string" ? parsed.webUrl.trim() : null;
+    if (!apiUrl) return null;
+    return { apiUrl, webUrl };
+  } catch {
+    return null;
+  }
 }
 
 function normalizeHttpUrl(value: string, field: string): string {

@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { CustomBackendModal } from "@/components/settings/custom-backend-modal";
 import { Text } from "@/components/ui/text";
 import { TextField } from "@/components/ui/text-field";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,8 @@ import { BACKEND_OPTIONS, useBackendStore } from "@/data/backend-config";
 import { showActionMenu } from "@/lib/action-menu";
 import { mapAuthError } from "@/lib/auth-error";
 
+const CUSTOM_BACKEND_ACTION = "__custom_backend__";
+
 export default function Login() {
   const sendCode = useAuthStore((s) => s.sendCode);
   const currentBackend = useBackendStore((s) => s.current);
@@ -20,6 +23,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [customBackendVisible, setCustomBackendVisible] = useState(false);
 
   const onSubmit = async () => {
     const trimmed = email.trim();
@@ -40,20 +44,36 @@ export default function Login() {
 
   const onSelectBackend = () => {
     void (async () => {
-      const nextApiUrl = await showActionMenu({
+      const action = await showActionMenu({
         title: "Default backend",
         message: "Choose which Multica deployment this device signs into.",
-        options: BACKEND_OPTIONS.map((backend) => ({
-          key: backend.apiUrl,
-          label:
-            backend.apiUrl === currentBackend.apiUrl
-              ? `${backend.label} (Current)`
-              : backend.label,
-        })),
+        options: [
+          ...BACKEND_OPTIONS.map((backend) => ({
+            key: backend.apiUrl,
+            label:
+              backend.apiUrl === currentBackend.apiUrl
+                ? `${backend.label} (Current)`
+                : backend.label,
+          })),
+          {
+            key: CUSTOM_BACKEND_ACTION,
+            label:
+              BACKEND_OPTIONS.some(
+                (backend) => backend.apiUrl === currentBackend.apiUrl,
+              )
+                ? "Custom backend..."
+                : "Edit custom backend...",
+          },
+        ],
       });
-      if (!nextApiUrl || nextApiUrl === currentBackend.apiUrl) return;
+      if (!action) return;
+      if (action === CUSTOM_BACKEND_ACTION) {
+        setCustomBackendVisible(true);
+        return;
+      }
+      if (action === currentBackend.apiUrl) return;
       const nextBackend = BACKEND_OPTIONS.find(
-        (backend) => backend.apiUrl === nextApiUrl,
+        (backend) => backend.apiUrl === action,
       );
       if (!nextBackend) return;
       await setBackend(nextBackend);
@@ -122,6 +142,19 @@ export default function Login() {
         >
           <Text>{submitting ? "Sending..." : "Send code"}</Text>
         </Button>
+
+        <CustomBackendModal
+          visible={customBackendVisible}
+          title="Custom backend"
+          message="Sign this device into a manually entered Multica deployment."
+          initialBackend={currentBackend}
+          saveLabel="Use backend"
+          onClose={() => setCustomBackendVisible(false)}
+          onSave={async (backend) => {
+            await setBackend(backend);
+            setCustomBackendVisible(false);
+          }}
+        />
       </KeyboardAwareScrollView>
     </SafeAreaView>
   );
