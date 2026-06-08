@@ -3,6 +3,7 @@ import type { ComponentProps } from "react";
 import { Redirect, Stack, useLocalSearchParams } from "expo-router";
 import { Platform } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import { AppLaunchSkeleton } from "@/components/app/app-launch-skeleton";
 import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { RealtimeProvider } from "@/data/realtime/realtime-provider";
@@ -129,7 +130,7 @@ export default function WorkspaceLayout() {
 
   // Wait for the workspaces list before deciding membership — otherwise a
   // valid deep link would briefly redirect away on cold start.
-  if (isLoading) return null;
+  if (isLoading) return <AppLaunchSkeleton />;
 
   if (!matched) return <Redirect href="/select-workspace" />;
 

@@ -1,10 +1,11 @@
-import { ActivityIndicator, ScrollView, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { Text } from "@/components/ui/text";
 import { Button } from "@/components/ui/button";
 import { CardPressable } from "@/components/ui/card";
+import { WorkspaceListLoading } from "@/components/workspace/workspace-list-loading";
 import { workspaceListOptions } from "@/data/queries/workspaces";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
@@ -36,9 +37,7 @@ export default function SelectWorkspace() {
           </Text>
 
           {isLoading ? (
-            <View className="py-8 items-center">
-              <ActivityIndicator />
-            </View>
+            <WorkspaceListLoading />
           ) : error ? (
             <View className="gap-3">
               <Text className="text-sm text-destructive">

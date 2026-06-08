@@ -3,13 +3,13 @@ import "../global.css";
 import { useEffect, useRef, useState } from "react";
 import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ThemeProvider } from "@react-navigation/native";
 import { PortalHost } from "@rn-primitives/portal";
+import { AppLaunchSkeleton } from "@/components/app/app-launch-skeleton";
 import { api } from "@/data/api";
 import { queryClient } from "@/data/query-client";
 import { useAuthStore } from "@/data/auth-store";
@@ -65,11 +65,7 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
   }, [initialize, qc]);
 
   if (!ready) {
-    return (
-      <View className="flex-1 items-center justify-center bg-background">
-        <ActivityIndicator />
-      </View>
-    );
+    return <AppLaunchSkeleton />;
   }
 
   return <>{children}</>;
