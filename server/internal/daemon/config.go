@@ -19,7 +19,7 @@ const (
 	DefaultPollInterval                   = 30 * time.Second
 	DefaultHeartbeatInterval              = 15 * time.Second
 	DefaultAgentTimeout                   = 2 * time.Hour
-	DefaultCodexSemanticInactivityTimeout = 10 * time.Minute
+	DefaultCodexSemanticInactivityTimeout = 2 * time.Minute
 	// DefaultAgentIdleWatchdog is the per-task safety net that force-stops a
 	// run when the backend has emitted no message for this long AND its
 	// message queue is empty. Backends like Claude Code can hang indefinitely

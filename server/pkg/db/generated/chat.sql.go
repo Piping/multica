@@ -192,6 +192,34 @@ func (q *Queries) GetChatMessage(ctx context.Context, id pgtype.UUID) (ChatMessa
 	return i, err
 }
 
+const updateChatMessageContent = `-- name: UpdateChatMessageContent :one
+UPDATE chat_message
+SET content = $2
+WHERE id = $1
+RETURNING id, chat_session_id, role, content, task_id, created_at, failure_reason, elapsed_ms
+`
+
+type UpdateChatMessageContentParams struct {
+	ID      pgtype.UUID `json:"id"`
+	Content string      `json:"content"`
+}
+
+func (q *Queries) UpdateChatMessageContent(ctx context.Context, arg UpdateChatMessageContentParams) (ChatMessage, error) {
+	row := q.db.QueryRow(ctx, updateChatMessageContent, arg.ID, arg.Content)
+	var i ChatMessage
+	err := row.Scan(
+		&i.ID,
+		&i.ChatSessionID,
+		&i.Role,
+		&i.Content,
+		&i.TaskID,
+		&i.CreatedAt,
+		&i.FailureReason,
+		&i.ElapsedMs,
+	)
+	return i, err
+}
+
 const getChatSession = `-- name: GetChatSession :one
 SELECT id, workspace_id, agent_id, creator_id, title, session_id, work_dir, status, created_at, updated_at, unread_since, runtime_id FROM chat_session
 WHERE id = $1

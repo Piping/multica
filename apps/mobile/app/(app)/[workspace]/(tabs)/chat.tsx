@@ -58,6 +58,10 @@ import {
   useCreateChatSession,
   useDeleteChatSession,
   useMarkChatSessionRead,
+  useRegenerateLastChatMessage,
+  useResendLastChatMessage,
+  useUpdateChatMessage,
+  useWithdrawLastChatMessage,
 } from "@/data/mutations/chat";
 import {
   DRAFT_NEW_SESSION,
@@ -76,6 +80,7 @@ import { ChatComposer } from "@/components/chat/chat-composer";
 import { AgentPickerSheet } from "@/components/chat/agent-picker-sheet";
 import { NoAgentBanner } from "@/components/chat/no-agent-banner";
 import { OfflineBanner } from "@/components/chat/offline-banner";
+import { EditMessageSheet } from "@/components/chat/edit-message-sheet";
 import { useChatSelectStore } from "@/data/chat-select-store";
 
 export default function ChatTab() {
@@ -87,6 +92,7 @@ export default function ChatTab() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
 
   // Bridge to the chat-sessions formSheet route. Mirror local
   // activeSessionId into the store so the picker can render the current
@@ -208,6 +214,10 @@ export default function ChatTab() {
   // ── Mutations ──────────────────────────────────────────────────────────
   const createSession = useCreateChatSession();
   const deleteSession = useDeleteChatSession();
+  const withdrawLast = useWithdrawLastChatMessage();
+  const regenerateLast = useRegenerateLastChatMessage();
+  const resendLast = useResendLastChatMessage();
+  const updateMessage = useUpdateChatMessage();
 
   // ── Send burst ─────────────────────────────────────────────────────────
   const sessionPromiseRef = useRef<Promise<string | null> | null>(null);
@@ -303,6 +313,27 @@ export default function ChatTab() {
     });
   }, [pendingTask?.task_id, activeSessionId, qc]);
 
+  const mutateLastTurn = useCallback(
+    (kind: "withdraw" | "regenerate" | "resend") => {
+      if (!activeSessionId) return;
+      if (kind === "withdraw") withdrawLast.mutate(activeSessionId);
+      else if (kind === "regenerate") regenerateLast.mutate(activeSessionId);
+      else resendLast.mutate(activeSessionId);
+    },
+    [activeSessionId, regenerateLast, resendLast, withdrawLast],
+  );
+
+  const handleSaveEditedMessage = useCallback(
+    (message: ChatMessage, content: string) => {
+      if (!activeSessionId) return;
+      updateMessage.mutate(
+        { sessionId: activeSessionId, messageId: message.id, content },
+        { onSuccess: () => setEditingMessage(null) },
+      );
+    },
+    [activeSessionId, updateMessage],
+  );
+
   // ── Header / sheet actions ─────────────────────────────────────────────
   const handleNewChat = useCallback(() => {
     if (availableAgents.length > 1) {
@@ -390,10 +421,15 @@ export default function ChatTab() {
           loading={messagesLoading}
           hasSessions={sessions.length > 0}
           agentName={currentAgent?.name}
+          agentId={currentAgent?.id}
           onPickPrompt={(text) => setDraft(draftKey, text)}
           pendingTask={pendingTask}
           liveTaskMessages={liveTaskMessages}
           availability={presenceAvailability}
+          onRegenerateLast={() => mutateLastTurn("regenerate")}
+          onResendLast={() => mutateLastTurn("resend")}
+          onWithdrawLast={() => mutateLastTurn("withdraw")}
+          onEditMessage={setEditingMessage}
         />
         <OfflineBanner
           agentName={currentAgent?.name}
@@ -416,6 +452,12 @@ export default function ChatTab() {
         currentAgentId={currentAgent?.id ?? null}
         onPick={handlePickAgent}
         onClose={() => setAgentPickerOpen(false)}
+      />
+      <EditMessageSheet
+        message={editingMessage}
+        submitting={updateMessage.isPending}
+        onClose={() => setEditingMessage(null)}
+        onSave={handleSaveEditedMessage}
       />
     </View>
   );

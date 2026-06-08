@@ -18,6 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { inboxListOptions } from "@/data/queries/inbox";
 import { chatSessionsOptions } from "@/data/queries/chat";
 import { deduplicateInboxItems } from "@/lib/inbox-display";
+import { useTodayAttentionCount } from "@/lib/today-attention";
 
 /**
  * Unread inbox count, aligned with what the inbox list renders: archived
@@ -46,4 +47,10 @@ export function useChatUnreadSessionCount(
     select: (sessions) => sessions.filter((s) => s.has_unread).length,
   });
   return data ?? 0;
+}
+
+export function useTodayBadgeCount(wsId: string | null | undefined): number {
+  const inboxUnread = useInboxUnreadCount(wsId);
+  const attentionCount = useTodayAttentionCount(wsId);
+  return inboxUnread + attentionCount;
 }

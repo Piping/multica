@@ -19,6 +19,7 @@ import type {
   Attachment,
   ChatMessage,
   ChatPendingTask,
+  CreateAgentRequest,
   ChatSession,
   Comment,
   CreateIssueRequest,
@@ -49,8 +50,10 @@ import type {
   Squad,
   NotificationPreferenceResponse,
   NotificationPreferences,
+  PendingChatTasksResponse,
   TaskMessagePayload,
   TimelineEntry,
+  UpdateAgentRequest,
   UpdateIssueRequest,
   UpdateMeRequest,
   UpdateProjectRequest,
@@ -66,16 +69,19 @@ import {
 } from "@multica/core/api/schemas";
 import {
   ActiveTasksResponseSchema,
+  AgentSchema,
   AgentListSchema,
   AgentTaskListSchema,
   AttachmentListSchema,
   AttachmentSchema,
+  ChatMessageSchema,
   ChatMessageListSchema,
   CommentSchema,
   ChatPendingTaskSchema,
   ChatSessionListSchema,
   ChatSessionSchema,
   EMPTY_ACTIVE_TASKS_RESPONSE,
+  EMPTY_AGENT,
   EMPTY_AGENT_LIST,
   EMPTY_AGENT_TASK_LIST,
   EMPTY_ATTACHMENT_LIST,
@@ -90,6 +96,7 @@ import {
   EMPTY_LIST_PROJECTS_RESPONSE,
   EMPTY_MEMBER_LIST,
   EMPTY_NOTIFICATION_PREFERENCES,
+  EMPTY_PENDING_CHAT_TASKS_RESPONSE,
   EMPTY_PIN_LIST,
   EMPTY_PROJECT,
   EMPTY_RUNTIME_LIST,
@@ -100,6 +107,7 @@ import {
   EMPTY_WORKSPACE_LIST,
   InboxListSchema,
   NotificationPreferenceResponseSchema,
+  PendingChatTasksResponseSchema,
   ListLabelsResponseSchema,
   ListProjectResourcesResponseSchema,
   ListProjectsResponseSchema,
@@ -114,6 +122,7 @@ import {
   SquadListSchema,
   TaskMessageListSchema,
   EMPTY_TASK_MESSAGE_LIST,
+  UpdateAgentRequestSchema,
   UserSchema,
   WorkspaceListSchema,
 } from "./schemas";
@@ -495,6 +504,42 @@ class ApiClient {
     return parseWithFallback(raw, AgentListSchema, EMPTY_AGENT_LIST, {
       endpoint: "listAgents",
     });
+  }
+
+  async getAgent(id: string, opts?: { signal?: AbortSignal }): Promise<Agent> {
+    return this.fetchValidated(
+      `/api/agents/${id}`,
+      AgentSchema,
+      { ...EMPTY_AGENT, id },
+      { signal: opts?.signal, endpoint: "GET /api/agents/:id" },
+    );
+  }
+
+  async updateAgent(id: string, data: UpdateAgentRequest): Promise<Agent> {
+    const parsed = UpdateAgentRequestSchema.safeParse(data);
+    if (!parsed.success) {
+      console.error("[api] → shape mismatch PUT /api/agents/:id", {
+        issues: parsed.error.issues,
+      });
+      throw new ApiError("Agent update payload invalid", 0, data);
+    }
+    return this.fetchValidatedWith(
+      `/api/agents/${id}`,
+      AgentSchema,
+      { ...EMPTY_AGENT, id },
+      { method: "PUT", body: JSON.stringify(parsed.data) },
+      { endpoint: "PUT /api/agents/:id" },
+    );
+  }
+
+  async createAgent(data: CreateAgentRequest): Promise<Agent> {
+    return this.fetchValidatedWith(
+      "/api/agents",
+      AgentSchema,
+      EMPTY_AGENT,
+      { method: "POST", body: JSON.stringify(data) },
+      { endpoint: "POST /api/agents" },
+    );
   }
 
   // Workspace runtimes — feeds the presence dot's availability dimension
@@ -1063,6 +1108,53 @@ class ApiClient {
     return parsed.data;
   }
 
+  async updateChatMessage(
+    sessionId: string,
+    messageId: string,
+    content: string,
+  ): Promise<ChatMessage> {
+    const fallback: ChatMessage = {
+      id: messageId,
+      chat_session_id: sessionId,
+      role: "user",
+      content,
+      task_id: null,
+      created_at: "",
+    };
+    return this.fetchValidatedWith(
+      `/api/chat/sessions/${sessionId}/messages/${messageId}`,
+      ChatMessageSchema,
+      fallback,
+      { method: "PATCH", body: JSON.stringify({ content }) },
+      { endpoint: "PATCH /api/chat/sessions/:id/messages/:messageId" },
+    );
+  }
+
+  async withdrawLastChatMessage(sessionId: string): Promise<void> {
+    await this.fetch<void>(
+      `/api/chat/sessions/${sessionId}/messages/withdraw-last`,
+      { method: "POST" },
+    );
+  }
+
+  async regenerateLastChatMessage(
+    sessionId: string,
+  ): Promise<SendChatMessageResponse> {
+    return this.fetch<SendChatMessageResponse>(
+      `/api/chat/sessions/${sessionId}/messages/regenerate-last`,
+      { method: "POST" },
+    );
+  }
+
+  async resendLastChatMessage(
+    sessionId: string,
+  ): Promise<SendChatMessageResponse> {
+    return this.fetch<SendChatMessageResponse>(
+      `/api/chat/sessions/${sessionId}/messages/resend-last`,
+      { method: "POST" },
+    );
+  }
+
   async getPendingChatTask(
     sessionId: string,
     opts?: { signal?: AbortSignal },
@@ -1076,6 +1168,20 @@ class ApiClient {
       ChatPendingTaskSchema,
       EMPTY_CHAT_PENDING_TASK,
       { endpoint: "GET /api/chat/sessions/:id/pending-task" },
+    );
+  }
+
+  async listPendingChatTasks(
+    opts?: { signal?: AbortSignal },
+  ): Promise<PendingChatTasksResponse> {
+    const raw = await this.fetch<unknown>("/api/chat/pending-tasks", {
+      signal: opts?.signal,
+    });
+    return parseWithFallback(
+      raw,
+      PendingChatTasksResponseSchema,
+      EMPTY_PENDING_CHAT_TASKS_RESPONSE,
+      { endpoint: "GET /api/chat/pending-tasks" },
     );
   }
 

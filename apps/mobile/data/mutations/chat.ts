@@ -9,8 +9,8 @@
  * Mirrors the optimistic-update + rollback + onSettled-invalidate pattern
  * of data/mutations/inbox.ts and web's packages/core/chat/mutations.ts.
  */
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ChatSession } from "@multica/core/types";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import type { ChatMessage, ChatPendingTask, ChatSession } from "@multica/core/types";
 import { api } from "@/data/api";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { chatKeys } from "@/data/queries/chat";
@@ -81,6 +81,100 @@ export function useMarkChatSessionRead() {
       if (ctx?.prev) qc.setQueryData(ctx.key, ctx.prev);
     },
     onSettled: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+    },
+  });
+}
+
+function invalidateSessionChat(qc: QueryClient, sessionId: string) {
+  qc.invalidateQueries({ queryKey: chatKeys.messages(sessionId) });
+  qc.invalidateQueries({ queryKey: chatKeys.pendingTask(sessionId) });
+}
+
+export function useWithdrawLastChatMessage() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
+
+  return useMutation({
+    mutationFn: (sessionId: string) => api.withdrawLastChatMessage(sessionId),
+    onSettled: (_data, _err, sessionId) => {
+      invalidateSessionChat(qc, sessionId);
+      qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+    },
+  });
+}
+
+export function useRegenerateLastChatMessage() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
+
+  return useMutation({
+    mutationFn: (sessionId: string) => api.regenerateLastChatMessage(sessionId),
+    onSuccess: (res, sessionId) => {
+      qc.setQueryData<ChatPendingTask>(chatKeys.pendingTask(sessionId), {
+        task_id: res.task_id,
+        status: "queued",
+        created_at: res.created_at,
+      });
+    },
+    onSettled: (_data, _err, sessionId) => {
+      qc.invalidateQueries({ queryKey: chatKeys.messages(sessionId) });
+      qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+    },
+  });
+}
+
+export function useResendLastChatMessage() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
+
+  return useMutation({
+    mutationFn: (sessionId: string) => api.resendLastChatMessage(sessionId),
+    onSuccess: (res, sessionId) => {
+      qc.setQueryData<ChatPendingTask>(chatKeys.pendingTask(sessionId), {
+        task_id: res.task_id,
+        status: "queued",
+        created_at: res.created_at,
+      });
+    },
+    onSettled: (_data, _err, sessionId) => {
+      qc.invalidateQueries({ queryKey: chatKeys.messages(sessionId) });
+      qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+    },
+  });
+}
+
+export function useUpdateChatMessage() {
+  const qc = useQueryClient();
+  const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
+
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      messageId,
+      content,
+    }: {
+      sessionId: string;
+      messageId: string;
+      content: string;
+    }) => api.updateChatMessage(sessionId, messageId, content),
+    onSuccess: (message, vars) => {
+      qc.setQueryData<ChatMessage[]>(chatKeys.messages(vars.sessionId), (old) => {
+        if (!old) return [message];
+        const editedAt = new Date(message.created_at).getTime();
+        return old
+          .filter((m) => {
+            const ts = new Date(m.created_at).getTime();
+            return Number.isFinite(ts) && Number.isFinite(editedAt)
+              ? ts <= editedAt
+              : m.id === message.id;
+          })
+          .map((m) => (m.id === message.id ? message : m));
+      });
+      qc.setQueryData(chatKeys.pendingTask(vars.sessionId), {});
+    },
+    onSettled: (_data, _err, vars) => {
+      invalidateSessionChat(qc, vars.sessionId);
       qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
     },
   });

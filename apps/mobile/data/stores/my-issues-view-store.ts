@@ -29,7 +29,7 @@ interface MyIssuesViewState {
 }
 
 export const useMyIssuesViewStore = create<MyIssuesViewState>((set) => ({
-  scope: "assigned",
+  scope: "all",
   statusFilters: [],
   priorityFilters: [],
   setScope: (scope) => set({ scope }),

@@ -25,11 +25,17 @@ export function useChatSessionsRealtime() {
     (ws, wsId) => {
       const invalidateSessions = () =>
         qc.invalidateQueries({ queryKey: chatKeys.sessions(wsId) });
+      const invalidatePendingTasks = () =>
+        qc.invalidateQueries({ queryKey: chatKeys.pendingTasks(wsId) });
+      const invalidateChat = () => {
+        invalidateSessions();
+        invalidatePendingTasks();
+      };
 
       return [
         // chat:done flips `has_unread` server-side; refetch so the dot shows
         // even when the user isn't in the chat screen.
-        ws.on("chat:done", invalidateSessions),
+        ws.on("chat:done", invalidateChat),
         // chat:session_read clears the unread flag (could be triggered from
         // web/desktop on the same account).
         ws.on("chat:session_read", invalidateSessions),
@@ -51,7 +57,12 @@ export function useChatSessionsRealtime() {
           dropSessionFromList(qc, wsId, payload);
         }),
         // Reconnect: we may have missed events while disconnected.
-        ws.onReconnect(invalidateSessions),
+        ws.on("task:queued", invalidatePendingTasks),
+        ws.on("task:dispatch", invalidatePendingTasks),
+        ws.on("task:completed", invalidatePendingTasks),
+        ws.on("task:failed", invalidatePendingTasks),
+        ws.on("task:cancelled", invalidatePendingTasks),
+        ws.onReconnect(invalidateChat),
       ];
     },
     [qc],

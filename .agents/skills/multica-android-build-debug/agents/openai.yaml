@@ -1,0 +1,4 @@
+interface:
+  display_name: "Multica Android Build"
+  short_description: "Build and debug the Multica Android app"
+  default_prompt: "Use $multica-android-build-debug to modify apps/mobile, build an arm64-v8a APK, and verify Android-specific regressions."

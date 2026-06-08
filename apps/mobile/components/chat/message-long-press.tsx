@@ -24,6 +24,15 @@ import { showActionMenu } from "@/lib/action-menu";
 
 export function useChatMessageLongPress(
   message: ChatMessage,
+  actions?: {
+    canRegenerate?: boolean;
+    canResend?: boolean;
+    canWithdraw?: boolean;
+    onRegenerate?: () => void;
+    onResend?: () => void;
+    onWithdraw?: () => void;
+    onEdit?: (message: ChatMessage) => void;
+  },
 ): { onLongPress: () => void; isPressed: boolean } {
   const [isPressed, setIsPressed] = useState(false);
 
@@ -42,6 +51,18 @@ export function useChatMessageLongPress(
                 { key: "select", label: "Select Text" },
               ]
             : []),
+          ...(message.role === "user" && actions?.canResend
+            ? [{ key: "resend", label: "Retry" }]
+            : []),
+          ...(message.role === "user" && actions?.canWithdraw
+            ? [{ key: "edit", label: "Edit" }]
+            : []),
+          ...(message.role === "assistant" && actions?.canRegenerate
+            ? [{ key: "regenerate", label: "Regenerate" }]
+            : []),
+          ...(message.role === "user" && actions?.canWithdraw
+            ? [{ key: "withdraw", label: "Withdraw", destructive: true }]
+            : []),
         ],
       });
       setIsPressed(false);
@@ -54,9 +75,14 @@ export function useChatMessageLongPress(
       }
       if (action === "select") {
         useChatSelectStore.getState().setSelecting(message.id);
+        return;
       }
+      if (action === "resend") actions?.onResend?.();
+      else if (action === "edit") actions?.onEdit?.(message);
+      else if (action === "regenerate") actions?.onRegenerate?.();
+      else if (action === "withdraw") actions?.onWithdraw?.();
     })();
-  }, [message]);
+  }, [actions, message]);
 
   return { onLongPress, isPressed };
 }

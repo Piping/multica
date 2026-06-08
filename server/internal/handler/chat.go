@@ -381,6 +381,10 @@ type SendChatMessageRequest struct {
 	AttachmentIDs []string `json:"attachment_ids"`
 }
 
+type UpdateChatMessageRequest struct {
+	Content string `json:"content"`
+}
+
 type SendChatMessageResponse struct {
 	MessageID string `json:"message_id"`
 	TaskID    string `json:"task_id"`
@@ -707,6 +711,133 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		TaskID:    uuidToString(task.ID),
 		CreatedAt: timestampToString(task.CreatedAt),
 	})
+}
+
+// UpdateChatMessage edits a user-authored chat message and removes every
+// later message in the session. The client can then call resend-last to run
+// the edited prompt. Editing an older turn necessarily invalidates later
+// assistant replies because they were generated from the old prompt.
+func (h *Handler) UpdateChatMessage(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+	workspaceID := ctxWorkspaceID(r.Context())
+	sessionID := chi.URLParam(r, "sessionId")
+	messageID := chi.URLParam(r, "messageId")
+
+	session, ok := h.gateChatSessionForUser(w, r, userID, workspaceID, sessionID)
+	if !ok {
+		return
+	}
+	if session.Status != "active" {
+		writeError(w, http.StatusBadRequest, "chat session is archived")
+		return
+	}
+
+	var req UpdateChatMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	content := strings.TrimSpace(req.Content)
+	if content == "" {
+		writeError(w, http.StatusBadRequest, "content is required")
+		return
+	}
+
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+
+	if _, err := qtx.LockChatSessionForDelete(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock chat session")
+		return
+	}
+
+	msg, err := qtx.GetChatMessage(r.Context(), parseUUID(messageID))
+	if err != nil || uuidToString(msg.ChatSessionID) != uuidToString(session.ID) {
+		writeError(w, http.StatusNotFound, "chat message not found")
+		return
+	}
+	if msg.Role != "user" {
+		writeError(w, http.StatusBadRequest, "only user messages can be edited")
+		return
+	}
+
+	cancelled, err := qtx.CancelAgentTasksByChatSession(r.Context(), session.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to cancel chat tasks")
+		return
+	}
+
+	allMessages, err := qtx.ListChatMessages(r.Context(), session.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list chat messages")
+		return
+	}
+	deleteIDs := make([]pgtype.UUID, 0)
+	var previousTaskID pgtype.UUID
+	for _, row := range allMessages {
+		if row.CreatedAt.Time.After(msg.CreatedAt.Time) || (row.CreatedAt.Time.Equal(msg.CreatedAt.Time) && uuidToString(row.ID) != uuidToString(msg.ID)) {
+			deleteIDs = append(deleteIDs, row.ID)
+			continue
+		}
+		if row.Role == "assistant" && row.TaskID.Valid {
+			previousTaskID = row.TaskID
+		}
+	}
+
+	if previousTaskID.Valid {
+		if err := rewindChatSessionBeforeTask(r.Context(), qtx, session.ID, previousTaskID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to rewind chat session")
+			return
+		}
+	} else if err := qtx.ReplaceChatSessionSession(r.Context(), db.ReplaceChatSessionSessionParams{ID: session.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reset chat session")
+		return
+	}
+
+	updated, err := qtx.UpdateChatMessageContent(r.Context(), db.UpdateChatMessageContentParams{
+		ID:      msg.ID,
+		Content: content,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update chat message")
+		return
+	}
+	if len(deleteIDs) > 0 {
+		if err := qtx.DeleteChatMessagesByIDs(r.Context(), deleteIDs); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to delete later chat messages")
+			return
+		}
+	}
+	if err := qtx.MarkChatSessionRead(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear chat unread state")
+		return
+	}
+	if err := qtx.TouchChatSession(r.Context(), session.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to touch chat session")
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit chat message edit")
+		return
+	}
+
+	if len(cancelled) > 0 {
+		h.TaskService.BroadcastCancelledTasks(r.Context(), cancelled)
+	}
+	resolvedSessionID := uuidToString(session.ID)
+	h.publishChat(protocol.EventChatSessionUpdated, workspaceID, "member", userID, resolvedSessionID, protocol.ChatSessionUpdatedPayload{
+		ChatSessionID: resolvedSessionID,
+	})
+	writeJSON(w, http.StatusOK, chatMessageToResponse(updated, nil))
 }
 
 // WithdrawLastChatMessage removes the latest user turn from a session.

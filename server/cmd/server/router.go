@@ -705,6 +705,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Delete("/", h.DeleteChatSession)
 					r.Post("/messages", h.SendChatMessage)
 					r.Get("/messages", h.ListChatMessages)
+					r.Patch("/messages/{messageId}", h.UpdateChatMessage)
 					r.Post("/messages/withdraw-last", h.WithdrawLastChatMessage)
 					r.Post("/messages/regenerate-last", h.RegenerateLastChatMessage)
 					r.Post("/messages/resend-last", h.ResendLastChatMessage)

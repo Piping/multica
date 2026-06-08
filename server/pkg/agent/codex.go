@@ -995,7 +995,7 @@ func codexFirstTurnNoProgressTimeout(semanticInactivityTimeout time.Duration) ti
 }
 
 func isCodexFirstTurnProgressActivity(activity string) bool {
-	return activity != "" && activity != "status:running" && activity != "error:retry"
+	return activity != "" && activity != "status:running" && !strings.HasPrefix(activity, "error:retry")
 }
 
 func buildCodexTimeoutDiagnosticError(diag codexTimeoutDiagnostic, stderrTail string) string {
@@ -1131,8 +1131,9 @@ type codexClient struct {
 	usageMu sync.Mutex
 	usage   TokenUsage // accumulated from turn events
 
-	turnErrorMu sync.Mutex
-	turnError   string // captured from turn/completed status=failed or terminal error notifications
+	turnErrorMu     sync.Mutex
+	turnError       string // captured from turn/completed status=failed or terminal error notifications
+	retryErrorCount int
 }
 
 func (c *codexClient) setTurnError(msg string) {
@@ -1150,6 +1151,13 @@ func (c *codexClient) getTurnError() string {
 	c.turnErrorMu.Lock()
 	defer c.turnErrorMu.Unlock()
 	return c.turnError
+}
+
+func (c *codexClient) incrementRetryErrorCount() int {
+	c.turnErrorMu.Lock()
+	defer c.turnErrorMu.Unlock()
+	c.retryErrorCount++
+	return c.retryErrorCount
 }
 
 type pendingRPC struct {
@@ -1511,7 +1519,7 @@ func (c *codexClient) handleRawNotification(method string, params map[string]any
 			c.cfg.Logger.Warn("codex error notification", "message", errMsg, "will_retry", willRetry)
 			if c.onSemanticActivity != nil {
 				if willRetry {
-					c.onSemanticActivity("error:retry")
+					c.onSemanticActivity(fmt.Sprintf("error:retry:%d", c.incrementRetryErrorCount()))
 				} else {
 					c.onSemanticActivity("error:terminal")
 				}

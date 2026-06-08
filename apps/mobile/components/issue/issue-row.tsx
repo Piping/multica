@@ -30,6 +30,7 @@ import { Text } from "@/components/ui/text";
 import { ActorAvatar } from "@/components/ui/actor-avatar";
 import { PriorityIcon } from "@/components/ui/priority-icon";
 import { StatusIcon } from "@/components/ui/status-icon";
+import { PRIORITY_LABEL, STATUS_LABEL } from "@/lib/issue-status";
 
 interface Props {
   issue: Issue;
@@ -39,22 +40,37 @@ interface Props {
 }
 
 export function IssueRow({ issue, onPress, showStatus = false }: Props) {
+  const hasAssignee = !!issue.assignee_type && !!issue.assignee_id;
   return (
-    <Pressable onPress={onPress} className="active:bg-secondary px-4 py-3">
-      <View className="flex-row items-center gap-3">
-        {showStatus ? <StatusIcon status={issue.status} size={14} /> : null}
-        <PriorityIcon priority={issue.priority} size={14} />
-        <Text className="text-xs text-muted-foreground shrink-0 w-16">
-          {issue.identifier}
-        </Text>
-        <Text className="flex-1 text-sm text-foreground" numberOfLines={1}>
+    <Pressable onPress={onPress} className="active:bg-secondary px-4 py-3.5">
+      <View className="flex-row items-start gap-3">
+        <View className="pt-0.5">
+          {showStatus ? (
+            <StatusIcon status={issue.status} size={16} />
+          ) : (
+            <PriorityIcon priority={issue.priority} size={16} />
+          )}
+        </View>
+        <View className="flex-1 min-w-0 gap-1.5">
+          <Text className="text-base font-medium text-foreground" numberOfLines={2}>
           {issue.title}
         </Text>
-        {issue.assignee_type && issue.assignee_id ? (
+          <View className="flex-row items-center gap-2 min-w-0">
+            <Text className="text-xs text-muted-foreground shrink-0">
+              {issue.identifier}
+            </Text>
+            <Text className="text-xs text-muted-foreground/50">·</Text>
+            {showStatus ? <PriorityIcon priority={issue.priority} size={12} /> : null}
+            <Text className="text-xs text-muted-foreground" numberOfLines={1}>
+              {showStatus ? PRIORITY_LABEL[issue.priority] : STATUS_LABEL[issue.status]}
+            </Text>
+          </View>
+        </View>
+        {hasAssignee ? (
           <ActorAvatar
             type={issue.assignee_type}
             id={issue.assignee_id}
-            size={20}
+            size={26}
             showPresence
           />
         ) : null}

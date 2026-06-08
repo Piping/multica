@@ -501,7 +501,7 @@ func TestCodexRawErrorNotificationRetryingIgnored(t *testing.T) {
 	if got := c.getTurnError(); got != "" {
 		t.Fatalf("retrying error should not be captured, got %q", got)
 	}
-	if got, want := strings.Join(activities, ","), "error:retry"; got != want {
+	if got, want := strings.Join(activities, ","), "error:retry:1"; got != want {
 		t.Fatalf("semantic activity = %q, want %q", got, want)
 	}
 }
@@ -516,6 +516,7 @@ func TestCodexFirstTurnProgressActivity(t *testing.T) {
 		{activity: "", want: false},
 		{activity: "status:running", want: false},
 		{activity: "error:retry", want: false},
+		{activity: "error:retry:5", want: false},
 		{activity: "error", want: true},
 		{activity: "text", want: true},
 		{activity: "tool-use:exec_command", want: true},

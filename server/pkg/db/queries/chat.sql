@@ -97,6 +97,12 @@ ORDER BY created_at ASC;
 SELECT * FROM chat_message
 WHERE id = $1;
 
+-- name: UpdateChatMessageContent :one
+UPDATE chat_message
+SET content = $2
+WHERE id = $1
+RETURNING *;
+
 -- name: CreateChatTask :one
 INSERT INTO agent_task_queue (agent_id, runtime_id, issue_id, status, priority, chat_session_id)
 VALUES ($1, $2, NULL, 'queued', $3, $4)

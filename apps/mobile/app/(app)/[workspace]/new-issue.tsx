@@ -22,7 +22,10 @@ import {
 import { Stack, router } from "expo-router";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SubmitIssueButton } from "@/components/issue/submit-issue-button";
-import { CreateFormAttributeRow } from "@/components/issue/create-form-attribute-row";
+import {
+  CreateFormAssigneeCallout,
+  CreateFormAttributeRow,
+} from "@/components/issue/create-form-attribute-row";
 import { MentionSuggestionBar } from "@/components/issue/mention-suggestion-bar";
 import { DescriptionField } from "@/components/issue/description-field";
 import { MOBILE_PLACEHOLDER_COLOR } from "@/components/ui/input-tokens";
@@ -114,13 +117,14 @@ export default function NewIssueModal() {
         <TextInput
           value={title}
           onChangeText={setTitle}
-          placeholder="Issue title"
+          placeholder="What should get done?"
           placeholderTextColor={MOBILE_PLACEHOLDER_COLOR}
           className="text-2xl font-semibold text-foreground py-2"
           autoFocus
           returnKeyType="next"
           editable={!isSubmitting}
         />
+        <CreateFormAssigneeCallout />
         <DescriptionField
           description={description}
           disabled={isSubmitting}

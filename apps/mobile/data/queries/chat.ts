@@ -25,6 +25,8 @@ export const chatKeys = {
   messages: (sessionId: string) => ["chat", "messages", sessionId] as const,
   pendingTask: (sessionId: string) =>
     ["chat", "pending-task", sessionId] as const,
+  pendingTasks: (wsId: string | null) =>
+    [...chatKeys.all(wsId), "pending-tasks"] as const,
   /** Per-task live execution timeline (thinking / tool_use / tool_result /
    *  text / error rows). Cache is workspace-agnostic — keyed only on
    *  `taskId` — matching web's `chatKeys.taskMessages` shape so future
@@ -69,6 +71,14 @@ export const pendingChatTaskOptions = (sessionId: string | null) =>
     queryKey: chatKeys.pendingTask(sessionId ?? ""),
     queryFn: ({ signal }) => api.getPendingChatTask(sessionId!, { signal }),
     enabled: !!sessionId,
+    staleTime: Infinity,
+  });
+
+export const pendingChatTasksOptions = (wsId: string | null) =>
+  queryOptions({
+    queryKey: chatKeys.pendingTasks(wsId),
+    queryFn: ({ signal }) => api.listPendingChatTasks({ signal }),
+    enabled: !!wsId,
     staleTime: Infinity,
   });
 

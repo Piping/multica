@@ -29,6 +29,7 @@ import { AgentHeaderBadge } from "@/components/issue/agent-header-badge";
 import { InlineCommentComposer } from "@/components/issue/inline-comment-composer";
 import {
   issueDetailOptions,
+  issueActiveTasksOptions,
   issueKeys,
   issueTimelineOptions,
 } from "@/data/queries/issues";
@@ -60,6 +61,7 @@ export default function IssueDetail() {
 
   const detail = useQuery(issueDetailOptions(wsId, id));
   const timeline = useQuery(issueTimelineOptions(wsId, id));
+  const activeTasks = useQuery(issueActiveTasksOptions(wsId, id));
 
   // Subscribe to per-issue WS events: status/priority/assignee/label
   // changes, comments, activity, reactions, agent task progress.
@@ -196,6 +198,7 @@ export default function IssueDetail() {
             onRefresh={onRefresh}
             highlightCommentId={highlight}
             highlightNonce={h}
+            activeTasks={activeTasks.data ?? []}
           />
           <InlineCommentComposer issueId={id} />
         </View>

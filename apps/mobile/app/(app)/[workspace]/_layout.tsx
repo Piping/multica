@@ -326,6 +326,30 @@ export default function WorkspaceLayout() {
           options={{ title: "Agents", headerBackTitle: "Back" }}
         />
         <Stack.Screen
+          name="more/agents/new"
+          options={{
+            title: "New Agent",
+            presentation: "modal",
+            headerLeft: () => <ModalCloseButton />,
+          }}
+        />
+        <Stack.Screen
+          name="more/runtimes/new"
+          options={{ title: "Add Runtime", headerBackTitle: "Workspace" }}
+        />
+        <Stack.Screen
+          name="more/agents/[id]"
+          options={{ title: "Agent", headerBackTitle: "Agents" }}
+        />
+        <Stack.Screen
+          name="more/agents/[id]/edit"
+          options={{
+            title: "Edit Agent",
+            presentation: "modal",
+            headerLeft: () => <ModalCloseButton />,
+          }}
+        />
+        <Stack.Screen
           name="more/pins"
           options={{ title: "Pinned", headerBackTitle: "Back" }}
         />

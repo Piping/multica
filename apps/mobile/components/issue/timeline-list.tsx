@@ -87,7 +87,7 @@ import {
 } from "react-native";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
-import type { Issue, TimelineEntry } from "@multica/core/types";
+import type { AgentTask, Issue, TimelineEntry } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { IssueHeaderCard } from "./issue-header-card";
 import { IssueDescription } from "./issue-description";
@@ -115,6 +115,7 @@ interface Props {
    *  `highlightCommentId` but a fresh nonce, which re-triggers the
    *  scroll-and-flash effect (without this, identical props short-circuit). */
   highlightNonce?: string;
+  activeTasks?: AgentTask[];
 }
 
 /** How long the flash stays "claimed" before we let a new highlight take
@@ -142,6 +143,7 @@ export function TimelineList({
   onRefresh,
   highlightCommentId,
   highlightNonce,
+  activeTasks = [],
 }: Props) {
   // Top-level selection subscription gates the outer "tap-outside-to-dismiss"
   // Pressable below. When null, the Pressable stays disabled and every tap
@@ -158,6 +160,16 @@ export function TimelineList({
     if (!entries) return [];
     return buildTimelineRows(coalesceTimeline(entries));
   }, [entries]);
+  const activeTasksByCommentId = useMemo(() => {
+    const map = new Map<string, AgentTask[]>();
+    for (const task of activeTasks) {
+      if (!task.trigger_comment_id) continue;
+      const list = map.get(task.trigger_comment_id);
+      if (list) list.push(task);
+      else map.set(task.trigger_comment_id, [task]);
+    }
+    return map;
+  }, [activeTasks]);
 
   const listRef = useRef<FlashListRef<TimelineRow>>(null);
   // Gates single-shot per (commentId, nonce) tuple. Re-tap from inbox
@@ -418,6 +430,7 @@ export function TimelineList({
               issueId={issue.id}
               issueIdentifier={issue.identifier}
               highlightedCommentId={highlightedId}
+              activeTasks={activeTasksByCommentId.get(item.entry.id) ?? []}
             />
           ) : (
             <ActivityRow entry={item.entry} />

@@ -33,6 +33,7 @@ import type {
   TaskQueuedPayload,
 } from "@multica/core/types";
 import { issueKeys } from "@/data/queries/issue-keys";
+import { appendTaskMessage } from "./chat-ws-updaters";
 import { useWSSubscriptions } from "@/lib/use-ws-subscriptions";
 import {
   addCommentReaction,
@@ -219,6 +220,12 @@ export function useIssueRealtime(
         ws.on("task:queued", onTaskEvent),
         ws.on("task:dispatch", onTaskEvent),
         ws.on("task:progress", onTaskEvent),
+        ws.on("task:running", onTaskEvent),
+        ws.on("task:waiting_local_directory", onTaskEvent),
+        ws.on("task:message", (payload) => {
+          if (payload.issue_id !== issueId) return;
+          appendTaskMessage(qc, payload);
+        }),
         ws.on("task:completed", onTaskEvent),
         ws.on("task:failed", onTaskEvent),
         ws.on("task:cancelled", onTaskEvent),

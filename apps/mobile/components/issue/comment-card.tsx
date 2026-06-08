@@ -32,7 +32,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
-import type { Reaction, TimelineEntry } from "@multica/core/types";
+import type { AgentTask, Reaction, TimelineEntry } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { ActorAvatar } from "@/components/ui/actor-avatar";
 import { useActorLookup } from "@/data/use-actor-name";
@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils";
 import { ReactionBar } from "./reaction-bar";
 import { useCommentLongPress } from "./comment-context-menu";
 import { useCommentSelectStore } from "@/data/comment-select-store";
+import { AgentFeedbackInline } from "./agent-feedback-inline";
 
 interface Props {
   entry: TimelineEntry;
@@ -73,6 +74,7 @@ interface Props {
    *  flash that reply's wrapper (bg only). Mirrors web's distinction at
    *  packages/views/issues/components/comment-card.tsx:498-682. */
   highlightedCommentId?: string | null;
+  activeTasks?: AgentTask[];
 }
 
 export function CommentCard({
@@ -81,6 +83,7 @@ export function CommentCard({
   issueId,
   issueIdentifier,
   highlightedCommentId,
+  activeTasks = [],
 }: Props) {
   // Resolved threads default to a single-line bar; tap expands in place for
   // the current session. Unmount (scroll out of viewport) resets — same
@@ -187,6 +190,9 @@ export function CommentCard({
         </View>
         <RootHighlightOverlay active={highlightedCommentId === entry.id} />
       </View>
+      {activeTasks.map((task) => (
+        <AgentFeedbackInline key={task.id} task={task} issueId={issueId} />
+      ))}
     </View>
   );
 }

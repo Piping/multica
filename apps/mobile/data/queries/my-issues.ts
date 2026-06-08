@@ -1,6 +1,9 @@
 /**
- * "My Issues" list, server-filtered by scope. Mirrors the three scopes web
- * exposes in `packages/views/my-issues/components/my-issues-page.tsx:48-65`:
+ * "My Issues" list, server-filtered by scope. Mobile adds an `all` scope as
+ * the default phone landing view so the tab works as a quick workspace issue
+ * inbox instead of hiding everything not assigned to the current user.
+ * The other three scopes mirror web's My Issues page:
+ *   - all:      every issue in the workspace
  *   - assigned: issues where assignee_id = me
  *   - created:  issues where creator_id  = me
  *   - agents:   issues where the assignee is an *indirect* extension of me —
@@ -27,6 +30,8 @@ export function buildMyIssuesFilter(
   userId: string,
 ): MyIssuesFilter {
   switch (scope) {
+    case "all":
+      return {};
     case "assigned":
       return { assignee_id: userId };
     case "created":

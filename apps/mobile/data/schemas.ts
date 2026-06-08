@@ -16,6 +16,7 @@ import type {
   Attachment,
   ChatMessage,
   ChatPendingTask,
+  PendingChatTasksResponse,
   ChatSession,
   Comment,
   InboxItem,
@@ -34,6 +35,7 @@ import type {
   SendChatMessageResponse,
   Squad,
   TaskMessagePayload,
+  UpdateAgentRequest,
   User,
   Workspace,
 } from "@multica/core/types";
@@ -281,6 +283,22 @@ export const ChatPendingTaskSchema: z.ZodType<ChatPendingTask> = z.object({
 
 export const EMPTY_CHAT_PENDING_TASK: ChatPendingTask = {};
 
+export const PendingChatTasksResponseSchema: z.ZodType<PendingChatTasksResponse> = z.object({
+  tasks: z
+    .array(
+      z.object({
+        task_id: z.string(),
+        status: z.string().default(""),
+        chat_session_id: z.string(),
+      }).loose(),
+    )
+    .default([]),
+}).loose();
+
+export const EMPTY_PENDING_CHAT_TASKS_RESPONSE: PendingChatTasksResponse = {
+  tasks: [],
+};
+
 export const SendChatMessageResponseSchema: z.ZodType<SendChatMessageResponse> = z.object({
   message_id: z.string(),
   task_id: z.string(),
@@ -370,7 +388,7 @@ export const AgentTaskSchema: z.ZodType<AgentTask> = z.object({
   runtime_id: z.string().default(""),
   issue_id: z.string().default(""),
   status: z
-    .enum(["queued", "dispatched", "running", "completed", "failed", "cancelled"])
+    .enum(["queued", "dispatched", "waiting_local_directory", "running", "completed", "failed", "cancelled"])
     .catch("queued"),
   priority: z.number().default(0),
   dispatched_at: z.string().nullable().default(null),
@@ -383,7 +401,7 @@ export const AgentTaskSchema: z.ZodType<AgentTask> = z.object({
   // so downstream truthy checks (`if (task.failure_reason)`) don't have to
   // special-case both null/undefined AND "".
   failure_reason: z
-    .enum(["agent_error", "timeout", "runtime_offline", "runtime_recovery", "manual", ""])
+    .enum(["agent_error", "timeout", "codex_semantic_inactivity", "runtime_offline", "runtime_recovery", "manual", ""])
     .optional()
     .catch("")
     .transform((v) => (v === "" ? undefined : v)),
@@ -583,6 +601,45 @@ export const AgentSchema: z.ZodType<Agent> = z.object({
 
 export const AgentListSchema = z.array(AgentSchema).default([]);
 export const EMPTY_AGENT_LIST: Agent[] = [];
+
+export const EMPTY_AGENT: Agent = {
+  id: "",
+  workspace_id: "",
+  runtime_id: "",
+  name: "",
+  description: "",
+  instructions: "",
+  avatar_url: null,
+  runtime_mode: "local",
+  runtime_config: {},
+  custom_args: [],
+  visibility: "private",
+  status: "idle",
+  max_concurrent_tasks: 1,
+  model: "",
+  owner_id: null,
+  skills: [],
+  created_at: "",
+  updated_at: "",
+  archived_at: null,
+  archived_by: null,
+};
+
+export const UpdateAgentRequestSchema: z.ZodType<UpdateAgentRequest> = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+  instructions: z.string().optional(),
+  avatar_url: z.string().optional(),
+  runtime_id: z.string().optional(),
+  runtime_config: z.record(z.string(), z.unknown()).optional(),
+  custom_args: z.array(z.string()).optional(),
+  mcp_config: z.unknown().optional(),
+  visibility: z.enum(["workspace", "private"]).optional(),
+  status: z.enum(["idle", "working", "blocked", "error", "offline"]).optional(),
+  max_concurrent_tasks: z.number().optional(),
+  model: z.string().optional(),
+  thinking_level: z.string().optional(),
+}).loose();
 
 // Runtime device — the daemon (local or cloud) an agent binds to. Mobile reads
 // it for the presence dot: `status` + `last_seen_at` drive the three-state

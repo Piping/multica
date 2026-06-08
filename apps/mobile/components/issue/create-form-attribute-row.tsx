@@ -15,6 +15,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AttributeChip } from "@/components/issue/attribute-chip";
 import { ActorAvatar } from "@/components/ui/actor-avatar";
+import { Text } from "@/components/ui/text";
 import { PriorityIcon } from "@/components/ui/priority-icon";
 import { ProjectIcon } from "@/components/ui/project-icon";
 import { StatusIcon } from "@/components/ui/status-icon";
@@ -127,6 +128,50 @@ export function CreateFormAttributeRow() {
           onPress={() => open("project")}
         />
       </View>
+    </View>
+  );
+}
+
+export function CreateFormAssigneeCallout() {
+  const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
+  const assignee = useNewIssueDraftStore((s) => s.assignee);
+  const { getName } = useActorLookup();
+
+  const open = () => {
+    if (!wsSlug) return;
+    router.push({
+      pathname: NEW_ISSUE_PICKER_PATHNAMES.assignee,
+      params: { workspace: wsSlug },
+    });
+  };
+
+  const isAgent = assignee?.type === "agent" || assignee?.type === "squad";
+  const title = assignee
+    ? `Hand off to ${getName(assignee.type, assignee.id)}`
+    : "Choose who should do this";
+  const subtitle = assignee
+    ? isAgent
+      ? "This issue will be queued for an AI teammate when you create it."
+      : "This issue will be assigned to a teammate when you create it."
+    : "Pick an agent, squad, or teammate before filling in the optional details.";
+
+  return (
+    <View className="gap-2">
+      <AttributeChip
+        icon={
+          assignee ? (
+            <ActorAvatar type={assignee.type} id={assignee.id} size={22} showPresence />
+          ) : (
+            <Ionicons name="sparkles-outline" size={18} color="#a1a1aa" />
+          )
+        }
+        label={title}
+        variant={assignee ? "filled" : "dimmed"}
+        onPress={open}
+      />
+      <Text className="text-xs text-muted-foreground px-1">
+        {subtitle}
+      </Text>
     </View>
   );
 }

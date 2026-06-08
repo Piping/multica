@@ -1,5 +1,6 @@
 /**
- * "My Issues" tab. Three scopes — assigned / created / agents — mirroring
+ * "My Issues" tab. Mobile defaults to all workspace issues for faster
+ * phone triage, then offers assigned / created / agents scopes matching
  * web's `packages/views/my-issues/components/my-issues-page.tsx:48-65`. The
  * `agents` scope label is "Agents and Squads" because the backend predicate
  * (`involves_user_id`, MUL-2397) surfaces both the user's owned agents and
@@ -52,6 +53,7 @@ import { THEME } from "@/lib/theme";
 // (`involves_user_id`, MUL-2397) covers owned agents + related squads; the
 // empty state copy still says "agents or squads".
 const SCOPES: { value: MyIssuesScope; label: string }[] = [
+  { value: "all", label: "All" },
   { value: "assigned", label: "Assigned" },
   { value: "created", label: "Created" },
   { value: "agents", label: "Agents" },
@@ -364,10 +366,11 @@ function emptyMessageForScope(scope: MyIssuesScope): string {
   switch (scope) {
     case "assigned":
       return "No issues assigned to you.";
+    case "all":
+      return "No issues yet.";
     case "created":
       return "You haven't created any issues.";
     case "agents":
       return "No issues assigned to your agents or squads yet.";
   }
 }
-
