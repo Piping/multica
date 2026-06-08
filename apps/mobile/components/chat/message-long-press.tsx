@@ -16,6 +16,7 @@
  * native alternative" threshold in apps/mobile/CLAUDE.md.
  */
 import { useCallback, useState } from "react";
+import type { GestureResponderEvent } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import type { ChatMessage } from "@multica/core/types";
@@ -33,17 +34,22 @@ export function useChatMessageLongPress(
     onWithdraw?: () => void;
     onEdit?: (message: ChatMessage) => void;
   },
-): { onLongPress: () => void; isPressed: boolean } {
+): {
+  onLongPress: (event: GestureResponderEvent) => void;
+  isPressed: boolean;
+} {
   const [isPressed, setIsPressed] = useState(false);
 
-  const onLongPress = useCallback(() => {
+  const onLongPress = useCallback((event: GestureResponderEvent) => {
     const hasContent = !!message.content;
+    const { pageX, pageY } = event.nativeEvent;
 
     Haptics.selectionAsync().catch(() => {});
     setIsPressed(true);
 
     void (async () => {
       const action = await showActionMenu({
+        anchor: { x: pageX, y: pageY },
         options: [
           ...(hasContent
             ? [

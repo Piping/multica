@@ -18,7 +18,7 @@
  * first is still dismissing — the callback runs after dismissal completes.
  */
 import { useCallback, useState } from "react";
-import { Alert } from "react-native";
+import { Alert, type GestureResponderEvent } from "react-native";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -43,7 +43,10 @@ export function useCommentLongPress(
   entry: TimelineEntry,
   issueId: string,
   issueIdentifier: string | undefined,
-): { onLongPress: () => void; isPressed: boolean } {
+): {
+  onLongPress: (event: GestureResponderEvent) => void;
+  isPressed: boolean;
+} {
   const [isPressed, setIsPressed] = useState(false);
   const wsSlug = useWorkspaceStore((s) => s.currentWorkspaceSlug);
   const userId = useAuthStore((s) => s.user?.id);
@@ -52,7 +55,7 @@ export function useCommentLongPress(
   const resolveComment = useResolveComment(issueId);
   const { getName } = useActorLookup();
 
-  const onLongPress = useCallback(() => {
+  const onLongPress = useCallback((event: GestureResponderEvent) => {
     const isOwn = entry.actor_type === "member" && entry.actor_id === userId;
     const isRoot = !entry.parent_id;
     const resolved = !!entry.resolved_at;
@@ -60,12 +63,14 @@ export function useCommentLongPress(
     const webUrl = getCurrentWebUrl();
     const canCopyLink = !!(webUrl && wsSlug && issueIdentifier);
     const reactions = (entry.reactions ?? []) as Reaction[];
+    const { pageX, pageY } = event.nativeEvent;
 
     Haptics.selectionAsync().catch(() => {});
     setIsPressed(true);
 
     void (async () => {
       const action = await showActionMenu({
+        anchor: { x: pageX, y: pageY },
         options: [
           { key: "reply", label: "Reply" },
           { key: "react", label: "React…" },
@@ -187,6 +192,7 @@ async function presentReactSheet(args: {
   const { entry, reactions, userId, wsSlug, issueId, toggle } = args;
   const emojis = QUICK_EMOJIS.slice(0, QUICK_ROW_SIZE);
   const action = await showActionMenu({
+    anchor: null,
     options: [
       ...emojis.map((emoji) => ({ key: emoji, label: emoji })),
       { key: "more", label: "More reactions…" },

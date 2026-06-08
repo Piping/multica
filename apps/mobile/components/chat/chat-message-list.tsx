@@ -50,7 +50,6 @@ import type {
 import type { AgentAvailability } from "@multica/core/agents";
 import { taskMessagesOptions } from "@/data/queries/chat";
 import { Text } from "@/components/ui/text";
-import { ActorAvatar } from "@/components/ui/actor-avatar";
 import { Markdown } from "@/lib/markdown";
 import { failureReasonLabel } from "@/lib/failure-reason-label";
 import { formatElapsedMs } from "@/lib/format-elapsed";
@@ -73,7 +72,6 @@ interface Props {
   hasSessions: boolean;
   /** Currently picked / inherited agent's display name. */
   agentName?: string;
-  agentId?: string | null;
   /** Receive a starter-prompt tap. Caller writes into the draft store
    *  (or focuses the composer with the text) — empty state stays neutral
    *  about send vs. preview. */
@@ -100,7 +98,6 @@ export function ChatMessageList({
   loading,
   hasSessions,
   agentName,
-  agentId,
   onPickPrompt,
   pendingTask,
   liveTaskMessages,
@@ -182,8 +179,6 @@ export function ChatMessageList({
           message={item}
           isLatest={index === messages.length - 1}
           isLatestUser={index === findLatestUserIndex(messages)}
-          agentId={agentId}
-          agentName={agentName}
           onRegenerateLast={onRegenerateLast}
           onResendLast={onResendLast}
           onWithdrawLast={onWithdrawLast}
@@ -193,13 +188,16 @@ export function ChatMessageList({
       ItemSeparatorComponent={MessageSeparator}
       ListFooterComponent={
         showLiveSection ? (
-          <LiveRunCard
-            pendingTask={pendingTask}
-            liveTaskMessages={showLiveTimeline ? liveTaskMessages ?? [] : []}
-            availability={availability}
-            agentId={agentId}
-            agentName={agentName}
-          />
+          <View style={{ paddingTop: 12 }} className="gap-2">
+            {showLiveTimeline ? (
+              <ChatTimeline items={liveTaskMessages ?? []} isStreaming />
+            ) : null}
+            <StatusPill
+              pendingTask={pendingTask}
+              taskMessages={liveTaskMessages}
+              availability={availability}
+            />
+          </View>
         ) : null
       }
       // Outer padding mirrors web's max-w-4xl px-5 py-4 container at
@@ -244,8 +242,6 @@ function MessageRow({
   message,
   isLatest,
   isLatestUser,
-  agentId,
-  agentName,
   onRegenerateLast,
   onResendLast,
   onWithdrawLast,
@@ -254,8 +250,6 @@ function MessageRow({
   message: ChatMessage;
   isLatest: boolean;
   isLatestUser: boolean;
-  agentId?: string | null;
-  agentName?: string;
   onRegenerateLast?: () => void;
   onResendLast?: () => void;
   onWithdrawLast?: () => void;
@@ -284,8 +278,6 @@ function MessageRow({
         elapsedMs={message.elapsed_ms ?? null}
         isSelecting={isSelecting}
         longPress={longPress}
-        agentId={agentId}
-        agentName={agentName}
       />
     );
   }
@@ -300,12 +292,12 @@ function MessageRow({
     const body = (
       <View
         className={cn(
-          "self-end max-w-[84%] rounded-2xl border px-3.5 py-2.5 transition-colors",
+          "self-end max-w-[80%] rounded-2xl border-2 px-3.5 py-2 transition-colors",
           isSelecting
-            ? "bg-primary/5 border-primary/40"
+            ? "bg-primary/5 border-primary/30"
             : longPress.isPressed
-              ? "bg-brand/10 border-primary/35"
-              : "bg-brand/10 border-brand/20",
+              ? "bg-muted border-primary/30"
+              : "bg-muted border-transparent",
         )}
       >
         <Markdown
@@ -334,49 +326,7 @@ function MessageRow({
       message={message}
       isSelecting={isSelecting}
       longPress={longPress}
-      agentId={agentId}
-      agentName={agentName}
     />
-  );
-}
-
-function LiveRunCard({
-  pendingTask,
-  liveTaskMessages,
-  availability,
-  agentId,
-  agentName,
-}: {
-  pendingTask?: ChatPendingTask | null;
-  liveTaskMessages: TaskMessagePayload[];
-  availability?: AgentAvailability;
-  agentId?: string | null;
-  agentName?: string;
-}) {
-  return (
-    <View className="pt-3">
-      <View className="flex-row items-start gap-2.5">
-        <ActorAvatar type="agent" id={agentId ?? null} size={28} showPresence />
-        <View className="flex-1 rounded-2xl border border-border bg-surface-1 px-3.5 py-3 gap-2">
-          <View className="flex-row items-center gap-2">
-            <Text className="flex-1 text-xs font-medium text-foreground" numberOfLines={1}>
-              {agentName ?? "Agent"}
-            </Text>
-            <View className="rounded-full bg-secondary px-2 py-0.5">
-              <Text className="text-[10px] text-muted-foreground">Live</Text>
-            </View>
-          </View>
-          {liveTaskMessages.length > 0 ? (
-            <ChatTimeline items={liveTaskMessages} isStreaming />
-          ) : null}
-          <StatusPill
-            pendingTask={pendingTask}
-            taskMessages={liveTaskMessages}
-            availability={availability}
-          />
-        </View>
-      </View>
-    </View>
   );
 }
 
@@ -405,14 +355,10 @@ function AssistantRow({
   message,
   isSelecting,
   longPress,
-  agentId,
-  agentName,
 }: {
   message: ChatMessage;
   isSelecting: boolean;
   longPress: ReturnType<typeof useChatMessageLongPress>;
-  agentId?: string | null;
-  agentName?: string;
 }) {
   // Read the cached timeline if any. `enabled` (in taskMessagesOptions) is
   // gated on isTaskMessageTaskId — optimistic id prefixes never fetch, so
@@ -423,35 +369,18 @@ function AssistantRow({
     taskMessagesOptions(message.task_id),
   );
   const body = (
-    <View className="flex-row items-start gap-2.5">
-      <ActorAvatar type="agent" id={agentId ?? null} size={28} showPresence />
-      <View
-        className={cn(
-          "flex-1 rounded-2xl border px-3.5 py-3 gap-2",
-          isSelecting || longPress.isPressed
-            ? "bg-primary/5 border-primary/40"
-            : "bg-surface-1 border-border",
-        )}
-      >
-        <View className="flex-row items-center gap-2">
-          <Text className="text-xs font-medium text-foreground" numberOfLines={1}>
-            {agentName ?? "Agent"}
-          </Text>
-          {message.elapsed_ms != null ? (
-            <Text className="text-xs text-muted-foreground/80">
-              · {formatElapsedMs(message.elapsed_ms)}
-            </Text>
-          ) : null}
-        </View>
-        {timeline.length > 0 ? (
-          <ChatTimeline items={timeline} />
-        ) : null}
-        <Markdown
-          content={message.content}
-          attachments={message.attachments}
-          selectable={isSelecting}
-        />
-      </View>
+    <View className="gap-1.5">
+      {timeline.length > 0 ? (
+        <ChatTimeline items={timeline} />
+      ) : null}
+      <Markdown
+        content={message.content}
+        attachments={message.attachments}
+        selectable={isSelecting}
+      />
+      {message.elapsed_ms != null ? (
+        <ElapsedCaption variant="replied" elapsedMs={message.elapsed_ms} />
+      ) : null}
     </View>
   );
   if (isSelecting) return body;
@@ -462,22 +391,37 @@ function AssistantRow({
   );
 }
 
+// Persistent caption rendered under the assistant bubble / failure bubble
+// once the server has written `elapsed_ms`. Server computes once at task
+// completion, so this caption is identical across reloads and clients.
+function ElapsedCaption({
+  variant,
+  elapsedMs,
+}: {
+  variant: "replied" | "failed";
+  elapsedMs: number;
+}) {
+  const label =
+    variant === "replied"
+      ? `Replied in ${formatElapsedMs(elapsedMs)}`
+      : `Failed after ${formatElapsedMs(elapsedMs)}`;
+  return (
+    <Text className="text-xs text-muted-foreground/80 mt-1">{label}</Text>
+  );
+}
+
 function FailureBubble({
   reasonLabel,
   rawError,
   elapsedMs,
   isSelecting,
   longPress,
-  agentId,
-  agentName,
 }: {
   reasonLabel: string;
   rawError: string;
   elapsedMs: number | null;
   isSelecting: boolean;
   longPress: ReturnType<typeof useChatMessageLongPress>;
-  agentId?: string | null;
-  agentName?: string;
 }) {
   const hasRawError = rawError.trim().length > 0;
 
@@ -487,27 +431,18 @@ function FailureBubble({
   // cue is the border-tint to primary; bg stays destructive so the
   // failure signal is never lost.
   const body = (
-    <View className="flex-row items-start gap-2.5">
-      <ActorAvatar type="agent" id={agentId ?? null} size={28} showPresence />
+    <View className="self-start max-w-[80%]">
       <View
         className={cn(
-          "flex-1 rounded-2xl border bg-destructive/10 px-3.5 py-3 transition-colors",
+          "rounded-2xl border-2 bg-destructive/10 px-3.5 py-2 transition-colors",
           isSelecting || longPress.isPressed
-            ? "border-primary/40"
+            ? "border-primary/30"
             : "border-destructive/30",
         )}
       >
-        <View className="flex-row items-center gap-2">
-          <Text className="flex-1 text-xs font-medium text-foreground" numberOfLines={1}>
-            {agentName ?? "Agent"}
-          </Text>
-          {elapsedMs != null ? (
-            <Text className="text-xs text-muted-foreground/80">
-              · {formatElapsedMs(elapsedMs)}
-            </Text>
-          ) : null}
-        </View>
-        <Text className="text-xs font-semibold text-destructive">{reasonLabel}</Text>
+        <Text className="text-xs font-semibold text-destructive">
+          {reasonLabel}
+        </Text>
         {hasRawError ? (
           <Collapsible>
             <CollapsibleTrigger asChild>
@@ -539,6 +474,9 @@ function FailureBubble({
           </Collapsible>
         ) : null}
       </View>
+      {elapsedMs != null ? (
+        <ElapsedCaption variant="failed" elapsedMs={elapsedMs} />
+      ) : null}
     </View>
   );
   if (isSelecting) return body;

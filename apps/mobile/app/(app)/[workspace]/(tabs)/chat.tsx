@@ -421,7 +421,6 @@ export default function ChatTab() {
           loading={messagesLoading}
           hasSessions={sessions.length > 0}
           agentName={currentAgent?.name}
-          agentId={currentAgent?.id}
           onPickPrompt={(text) => setDraft(draftKey, text)}
           pendingTask={pendingTask}
           liveTaskMessages={liveTaskMessages}
