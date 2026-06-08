@@ -24,13 +24,17 @@
  *     behavior — earlier whitelist (member/agent only) silently dropped
  *     squad assignees instead.
  */
-import { Pressable, View } from "react-native";
-import type { Issue } from "@multica/core/types";
+import { useCallback, useRef, useState } from "react";
+import { Pressable, View, type GestureResponderEvent } from "react-native";
+import * as Haptics from "expo-haptics";
+import type { Issue, IssueStatus } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { ActorAvatar } from "@/components/ui/actor-avatar";
 import { PriorityIcon } from "@/components/ui/priority-icon";
 import { StatusIcon } from "@/components/ui/status-icon";
-import { PRIORITY_LABEL, STATUS_LABEL } from "@/lib/issue-status";
+import { useUpdateIssue } from "@/data/mutations/issues";
+import { showActionMenu } from "@/lib/action-menu";
+import { BOARD_STATUSES, PRIORITY_LABEL, STATUS_LABEL } from "@/lib/issue-status";
 
 interface Props {
   issue: Issue;
@@ -40,9 +44,50 @@ interface Props {
 }
 
 export function IssueRow({ issue, onPress, showStatus = false }: Props) {
+  const [isPressed, setIsPressed] = useState(false);
+  const suppressNextPressRef = useRef(false);
   const hasAssignee = !!issue.assignee_type && !!issue.assignee_id;
+  const updateIssue = useUpdateIssue(issue.id);
+
+  const onRowPress = useCallback(() => {
+    if (suppressNextPressRef.current) {
+      suppressNextPressRef.current = false;
+      return;
+    }
+    onPress();
+  }, [onPress]);
+
+  const onLongPress = useCallback((event: GestureResponderEvent) => {
+    const { pageX, pageY } = event.nativeEvent;
+
+    Haptics.selectionAsync().catch(() => {});
+    suppressNextPressRef.current = true;
+    setIsPressed(true);
+
+    void (async () => {
+      const action = await showActionMenu({
+        title: issue.identifier,
+        message: issue.title,
+        anchor: { x: pageX, y: pageY },
+        options: issueStatusOptions(issue.status),
+      });
+      setIsPressed(false);
+      if (!action || action === issue.status) return;
+      updateIssue.mutate({ status: action as IssueStatus });
+    })();
+  }, [issue.identifier, issue.status, issue.title, updateIssue]);
+
   return (
-    <Pressable onPress={onPress} className="active:bg-secondary px-4 py-3.5">
+    <Pressable
+      onPress={onRowPress}
+      onLongPress={onLongPress}
+      delayLongPress={500}
+      className={
+        isPressed
+          ? "bg-accent/60 px-4 py-3.5"
+          : "active:bg-secondary px-4 py-3.5"
+      }
+    >
       <View className="flex-row items-start gap-3">
         <View className="pt-0.5">
           {showStatus ? (
@@ -52,17 +97,24 @@ export function IssueRow({ issue, onPress, showStatus = false }: Props) {
           )}
         </View>
         <View className="flex-1 min-w-0 gap-1.5">
-          <Text className="text-base font-medium text-foreground" numberOfLines={2}>
-          {issue.title}
-        </Text>
+          <Text
+            className="text-base font-medium text-foreground"
+            numberOfLines={2}
+          >
+            {issue.title}
+          </Text>
           <View className="flex-row items-center gap-2 min-w-0">
             <Text className="text-xs text-muted-foreground shrink-0">
               {issue.identifier}
             </Text>
             <Text className="text-xs text-muted-foreground/50">·</Text>
-            {showStatus ? <PriorityIcon priority={issue.priority} size={12} /> : null}
+            {showStatus ? (
+              <PriorityIcon priority={issue.priority} size={12} />
+            ) : null}
             <Text className="text-xs text-muted-foreground" numberOfLines={1}>
-              {showStatus ? PRIORITY_LABEL[issue.priority] : STATUS_LABEL[issue.status]}
+              {showStatus
+                ? PRIORITY_LABEL[issue.priority]
+                : STATUS_LABEL[issue.status]}
             </Text>
           </View>
         </View>
@@ -77,4 +129,14 @@ export function IssueRow({ issue, onPress, showStatus = false }: Props) {
       </View>
     </Pressable>
   );
+}
+
+function issueStatusOptions(current: IssueStatus) {
+  return [...BOARD_STATUSES, "cancelled" as const].map((status) => ({
+    key: status,
+    label: STATUS_LABEL[status],
+    selected: status === current,
+    icon: null,
+    leading: <StatusIcon status={status} size={18} />,
+  }));
 }

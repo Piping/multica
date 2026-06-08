@@ -9,8 +9,9 @@
  *
  * Self-contained: reads/writes the store directly, no callback passing.
  */
-import { Pressable, ScrollView, View } from "react-native";
+import { Platform, Pressable, ScrollView, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 import type { IssuePriority, IssueStatus } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { StatusIcon } from "@/components/ui/status-icon";
@@ -75,7 +76,10 @@ export default function IssuesFilterRoute() {
   const hasActive = statusFilters.length > 0 || priorityFilters.length > 0;
 
   return (
-    <View className="flex-1">
+    <SafeAreaView
+      className="flex-1 bg-background"
+      edges={Platform.OS === "android" ? ["top"] : []}
+    >
       <View className="flex-row items-center justify-between px-4 pt-4 pb-3">
         <Text className="text-base font-semibold text-foreground">Filter</Text>
         {hasActive ? (
@@ -131,7 +135,7 @@ export default function IssuesFilterRoute() {
           );
         })}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

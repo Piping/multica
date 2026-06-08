@@ -128,7 +128,10 @@ export default function MyIssues() {
 
   return (
     <View className="flex-1 bg-background">
-      <Header title="My Issues" right={<HeaderActions />} />
+      <Header
+        title="My Issues"
+        right={<HeaderActions actions={["search", "new-issue"]} />}
+      />
       <ScopeToolbar
         scopes={SCOPES}
         scope={scope}

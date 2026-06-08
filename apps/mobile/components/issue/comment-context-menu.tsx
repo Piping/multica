@@ -8,7 +8,7 @@
  * animation, zero overflow math, zero new deps.
  *
  * Item set (conditional, mirrors web's comment context menu):
- *   Reply (stub) · React… (opens nested sheet) · Copy · Select Text ·
+ *   Reply in Thread · React… (opens nested sheet) · Copy · Select Text ·
  *   Copy Link · Resolve/Unresolve Thread (root only) · Delete (own only) ·
  *   Cancel
  *
@@ -27,8 +27,7 @@ import { useAuthStore } from "@/data/auth-store";
 import { getCurrentWebUrl } from "@/data/backend-config";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useCommentSelectStore } from "@/data/comment-select-store";
-import { useReplyTargetStore } from "@/data/stores/reply-target-store";
-import { useActorLookup } from "@/data/use-actor-name";
+import { useCommentThreadTargetStore } from "@/data/stores/comment-thread-target-store";
 import {
   useDeleteComment,
   useResolveComment,
@@ -43,6 +42,8 @@ export function useCommentLongPress(
   entry: TimelineEntry,
   issueId: string,
   issueIdentifier: string | undefined,
+  threadRootEntry: TimelineEntry,
+  threadReplyCount: number,
 ): {
   onLongPress: (event: GestureResponderEvent) => void;
   isPressed: boolean;
@@ -53,7 +54,6 @@ export function useCommentLongPress(
   const toggleReaction = useToggleCommentReaction(issueId);
   const deleteComment = useDeleteComment(issueId);
   const resolveComment = useResolveComment(issueId);
-  const { getName } = useActorLookup();
 
   const onLongPress = useCallback((event: GestureResponderEvent) => {
     const isOwn = entry.actor_type === "member" && entry.actor_id === userId;
@@ -72,7 +72,7 @@ export function useCommentLongPress(
       const action = await showActionMenu({
         anchor: { x: pageX, y: pageY },
         options: [
-          { key: "reply", label: "Reply" },
+          { key: "reply", label: "Reply in Thread" },
           { key: "react", label: "React…" },
           ...(hasContent
             ? [
@@ -99,14 +99,9 @@ export function useCommentLongPress(
 
       switch (action) {
         case "reply": {
-          const actorName = getName(
-            entry.actor_type as "member" | "agent" | null | undefined,
-            entry.actor_id,
-          );
-          useReplyTargetStore.getState().setTarget({
-            commentId: entry.id,
-            actorName: actorName || "comment",
-            preview: entry.content ?? "",
+          useCommentThreadTargetStore.getState().setTarget({
+            mode: "thread",
+            rootCommentId: threadRootEntry.id,
           });
           return;
         }

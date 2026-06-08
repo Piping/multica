@@ -10,7 +10,7 @@
  * Stack.Screen with title "Issue". We override that here once the data
  * lands so the navigation bar shows `MUL-123` (Linear-style).
  */
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -42,7 +42,7 @@ import { useIssueRealtime } from "@/data/realtime/use-issue-realtime";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useViewedIssuesStore } from "@/data/viewed-issues-store";
 import { useCommentSelectStore } from "@/data/comment-select-store";
-import { useReplyTargetStore } from "@/data/stores/reply-target-store";
+import { useCommentThreadTargetStore } from "@/data/stores/comment-thread-target-store";
 import { showActionMenu } from "@/lib/action-menu";
 
 export default function IssueDetail() {
@@ -58,6 +58,7 @@ export default function IssueDetail() {
   }>();
   const wsId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const qc = useQueryClient();
+  const [scrollToBottomRequest, setScrollToBottomRequest] = useState(0);
 
   const detail = useQuery(issueDetailOptions(wsId, id));
   const timeline = useQuery(issueTimelineOptions(wsId, id));
@@ -82,12 +83,12 @@ export default function IssueDetail() {
 
   // Screen-scoped composer state — clear on unmount so re-entering the
   // issue starts from a clean slate (no stale text-selection comment id,
-  // no stale "Replying to X" target). Both stores are singletons used by
-  // the long-press action sheet.
+  // no stale thread target). Both stores are singletons used by the
+  // long-press action sheet.
   useEffect(() => {
     return () => {
       useCommentSelectStore.getState().clear();
-      useReplyTargetStore.getState().clear();
+      useCommentThreadTargetStore.getState().reset();
     };
   }, []);
 
@@ -196,11 +197,24 @@ export default function IssueDetail() {
             timelineLoading={timeline.isLoading}
             refreshing={detail.isRefetching || timeline.isRefetching}
             onRefresh={onRefresh}
+            scrollToBottomRequest={scrollToBottomRequest}
             highlightCommentId={highlight}
             highlightNonce={h}
             activeTasks={activeTasks.data ?? []}
           />
-          <InlineCommentComposer issueId={id} />
+          <InlineCommentComposer
+            issueId={id}
+            entries={timeline.data}
+            onCreateTopLevelComment={() =>
+              setScrollToBottomRequest((prev) => prev + 1)
+            }
+            onCreateThreadReply={() => {
+              // Keep the viewport stable for thread replies. They render back
+              // into an older card, so a forced bottom jump would hide the
+              // result rather than reveal it. A later pass can add anchored
+              // scroll-to-thread if needed.
+            }}
+          />
         </View>
       )}
     </View>

@@ -107,6 +107,7 @@ interface Props {
   timelineLoading: boolean;
   refreshing: boolean;
   onRefresh: () => void;
+  scrollToBottomRequest?: number;
   /** Inbox deep-link target. Root comment id OR reply id — replies live
    *  inline inside their parent's CommentCard, so a reply target scrolls
    *  to the parent's row and the card highlights the matching child. */
@@ -141,6 +142,7 @@ export function TimelineList({
   timelineLoading,
   refreshing,
   onRefresh,
+  scrollToBottomRequest,
   highlightCommentId,
   highlightNonce,
   activeTasks = [],
@@ -249,6 +251,18 @@ export function TimelineList({
     listRef.current?.scrollToEnd({ animated: true });
     setNewCount(0);
   }, []);
+
+  const lastScrollRequestRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!scrollToBottomRequest) return;
+    if (lastScrollRequestRef.current === scrollToBottomRequest) return;
+    lastScrollRequestRef.current = scrollToBottomRequest;
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated: true });
+      isAtBottomRef.current = true;
+      setNewCount(0);
+    });
+  }, [scrollToBottomRequest]);
 
   // ── Inject divider as a sentinel row before its anchor entry ──────────
   // FlatList wants a flat data[] and a stable key per row. Rather than

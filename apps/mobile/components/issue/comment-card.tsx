@@ -172,6 +172,8 @@ export function CommentCard({
             entry={entry}
             issueId={issueId}
             issueIdentifier={issueIdentifier}
+            threadRootEntry={entry}
+            threadReplyCount={replies.length}
             onPressChange={handlePressChange}
           />
           {replies.map((reply) => (
@@ -180,6 +182,8 @@ export function CommentCard({
                 entry={reply}
                 issueId={issueId}
                 issueIdentifier={issueIdentifier}
+                threadRootEntry={entry}
+                threadReplyCount={replies.length}
                 onPressChange={handlePressChange}
               />
               <ReplyHighlightOverlay
@@ -381,11 +385,15 @@ function CommentBody({
   entry,
   issueId,
   issueIdentifier,
+  threadRootEntry,
+  threadReplyCount,
   onPressChange,
 }: {
   entry: TimelineEntry;
   issueId: string;
   issueIdentifier: string | undefined;
+  threadRootEntry: TimelineEntry;
+  threadReplyCount: number;
   onPressChange?: (entryId: string, pressed: boolean) => void;
 }) {
   // When this comment is the active selection target, drop the long-press
@@ -476,7 +484,13 @@ function CommentBody({
   // + handles + Copy/Look Up callout. The outer bubble shell carries a
   // translucent primary-tint background as the mode cue (no Done pill).
   // Exit: scroll the timeline, leave the issue, or long-press another body.
-  const longPress = useCommentLongPress(entry, issueId, issueIdentifier);
+  const longPress = useCommentLongPress(
+    entry,
+    issueId,
+    issueIdentifier,
+    threadRootEntry,
+    threadReplyCount,
+  );
 
   useEffect(() => {
     if (isSelecting) return;

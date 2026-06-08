@@ -105,7 +105,10 @@ export default function WorkspaceTab() {
 
   return (
     <View className="flex-1 bg-background">
-      <Header title="Workspace" right={<HeaderActions />} />
+      <Header
+        title="Workspace"
+        right={<HeaderActions actions={["search", "new-project"]} />}
+      />
       <ScrollView
         className="flex-1"
         contentContainerClassName="px-4 py-4 gap-5 pb-8"

@@ -29,6 +29,8 @@ export interface ActionMenuOption {
   destructive?: boolean;
   disabled?: boolean;
   icon?: React.ComponentProps<typeof Ionicons>["name"] | null;
+  selected?: boolean;
+  leading?: React.ReactNode;
 }
 
 interface ActionMenuConfig {
@@ -294,11 +296,14 @@ function ActionMenuOptions({
                 disabled={option.disabled}
                 className={cn(
                   "flex-row items-center gap-3 px-3.5 py-3 active:bg-accent",
+                  option.selected && "bg-accent/60",
                   option.disabled && "opacity-45",
                 )}
               >
                 <View className="w-5 items-center">
-                  {iconName ? (
+                  {option.leading ? (
+                    option.leading
+                  ) : iconName ? (
                     <Ionicons
                       name={iconName}
                       size={18}
@@ -319,6 +324,13 @@ function ActionMenuOptions({
                 >
                   {option.label}
                 </Text>
+                {option.selected ? (
+                  <Ionicons
+                    name="checkmark"
+                    size={18}
+                    color={option.destructive ? destructiveColor : iconColor}
+                  />
+                ) : null}
               </Pressable>
             </View>
           );

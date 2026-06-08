@@ -2,7 +2,7 @@
  * Shared message composer used by both the issue-comment thread and the
  * chat tab. Always renders as a full input card:
  *
- *   optional reply chip → chip row (@ + image + file) → plain TextInput
+ *   optional header content → chip row (@ + image + file) → plain TextInput
  *   → toolbar (`@ 📷 📎 ──── [➤ or Stop]`).
  *
  * Mentions / images / files all live in the chip row OUTSIDE the text
@@ -27,8 +27,9 @@
  *   - The submit action — `onSubmit` is the caller's escape hatch (it
  *     wires `useCreateComment` on the comment side, the chat send burst
  *     on the chat side).
- *   - Reply target lifecycle — comment passes in `replyTarget` +
- *     `onClearReplyTarget` from its store; chat doesn't.
+ *   - Thread / mode UI — callers can inject `headerContent` above the
+ *     input card (issue comments use this for thread selection; chat
+ *     leaves it empty).
  *   - Stop visual / animation — chat passes a `renderStop()` slot when
  *     `isSending` is true.
  *
@@ -53,7 +54,6 @@ import * as DocumentPicker from "expo-document-picker";
 import { api, MAX_FILE_SIZE } from "@/data/api";
 import { useMentionDraftStore } from "@/data/stores/mention-draft-store";
 import { useColorScheme } from "@/lib/use-color-scheme";
-import { stripMarkdown } from "@/lib/strip-markdown";
 import { THEME } from "@/lib/theme";
 import { Text } from "@/components/ui/text";
 import { IconButton } from "@/components/ui/icon-button";
@@ -62,11 +62,6 @@ import {
   type ComposerAttachmentItem,
   type MentionChip,
 } from "@/components/issue/composer-attachment-row";
-
-export interface MessageComposerReplyTarget {
-  actorName: string;
-  preview: string;
-}
 
 interface Props {
   /** Submit callback. Composer awaits this; on rejection it restores text,
@@ -97,9 +92,9 @@ interface Props {
   value?: string;
   onChangeText?: (next: string) => void;
 
-  /** Optional reply chip (comment only). */
-  replyTarget?: MessageComposerReplyTarget | null;
-  onClearReplyTarget?: () => void;
+  /** Optional content rendered above the input card. Issue comments use
+   *  this for thread selection; chat leaves it empty. */
+  headerContent?: ReactNode;
 
   /** Focus request key. When this changes to a truthy stable value, the
    *  composer focuses its TextInput. Comment uses it to react to
@@ -154,8 +149,7 @@ export function MessageComposer({
   placeholder = "Type a message…",
   value: controlledValue,
   onChangeText: controlledOnChange,
-  replyTarget = null,
-  onClearReplyTarget,
+  headerContent,
   focusTrigger,
   isSending = false,
   renderStop,
@@ -409,43 +403,7 @@ export function MessageComposer({
       className="bg-background px-3 pt-2 gap-2"
       style={{ paddingBottom: 4 }}
     >
-      {replyTarget && (
-        <View className="px-3 py-1.5 rounded-md bg-secondary/60 gap-0.5">
-          <View className="flex-row items-center gap-2">
-            <Ionicons
-              name="return-up-back"
-              size={14}
-              color={theme.mutedForeground}
-            />
-            <Text
-              className="flex-1 text-xs font-medium text-muted-foreground"
-              numberOfLines={1}
-            >
-              Replying to {replyTarget.actorName}
-            </Text>
-            <Pressable
-              onPress={onClearReplyTarget}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel reply"
-            >
-              <Ionicons
-                name="close-circle"
-                size={16}
-                color={theme.mutedForeground}
-              />
-            </Pressable>
-          </View>
-          {replyTarget.preview ? (
-            <Text
-              className="text-xs text-muted-foreground pl-5"
-              numberOfLines={2}
-            >
-              {stripMarkdown(replyTarget.preview)}
-            </Text>
-          ) : null}
-        </View>
-      )}
+      {headerContent}
 
       <View
         className="rounded-3xl border border-border bg-secondary"

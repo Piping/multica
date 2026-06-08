@@ -21,9 +21,9 @@
  *     is a flat list (CLAUDE.md), so we don't preserve depth — just keep
  *     them all inside the same bubble in chronological order.
  *
- * Total comment+activity count emitted is identical to the input (just
- * fewer rows because replies are folded into parents). That preserves the
- * "Counts must agree" parity rule against web.
+ * Mobile issue detail now renders a thread-first main surface: comment
+ * threads only, no inline activity rows. Activity moves to a dedicated
+ * History sheet so the reading flow stays about discussion.
  */
 import type { TimelineEntry } from "@multica/core/types";
 
@@ -54,8 +54,8 @@ export function buildTimelineRows(
       const list = childrenByParent.get(e.parent_id) ?? [];
       list.push(e);
       childrenByParent.set(e.parent_id, list);
-    } else {
-      // Activity OR top-level comment OR orphan reply (parent not in batch).
+    } else if (e.type === "comment") {
+      // Top-level comment OR orphan reply (parent not in batch).
       topLevel.push(e);
     }
   }
@@ -79,9 +79,17 @@ export function buildTimelineRows(
     return out;
   }
 
-  return topLevel.map((entry) => ({
-    entry,
-    replies:
-      entry.type === "comment" ? collectDescendants(entry.id) : [],
-  }));
+  const rows = topLevel.map((entry) => {
+    const replies = collectDescendants(entry.id);
+    return {
+      entry,
+      replies,
+      lastActivityAt:
+        replies[replies.length - 1]?.created_at ?? entry.created_at,
+    };
+  });
+
+  rows.sort((a, b) => a.lastActivityAt.localeCompare(b.lastActivityAt));
+
+  return rows.map(({ entry, replies }) => ({ entry, replies }));
 }

@@ -34,6 +34,7 @@ import type {
 } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { StatusIcon } from "@/components/ui/status-icon";
+import { IssueRow } from "@/components/issue/issue-row";
 import { PriorityIcon } from "@/components/ui/priority-icon";
 import { ProjectIcon } from "@/components/ui/project-icon";
 import { ProjectStatusIcon } from "@/components/ui/project-status-icon";
@@ -163,32 +164,15 @@ function SearchIssueRow({ item, query, slug }: SearchIssueRowProps) {
   // (server/internal/handler/issue.go:592). Keep mobile strictly aligned.
   const showSnippet =
     item.match_source === "comment" && !!item.matched_snippet;
-  const statusLabel = STATUS_LABEL[item.status as IssueStatus] ?? item.status;
   return (
-    <Pressable
-      onPress={() => navigateOnTap(slug, `/${slug}/issue/${item.id}`)}
-      className="active:bg-secondary px-4 py-3"
-    >
-      <View className="flex-row items-center gap-3">
-        <StatusIcon status={item.status as IssueStatus} size={14} />
-        <PriorityIcon priority={item.priority} size={14} />
-        <Text className="text-xs text-muted-foreground shrink-0 w-16">
-          {item.identifier}
-        </Text>
-        <View className="flex-1">
-          <HighlightText
-            text={item.title}
-            query={query}
-            className="text-sm text-foreground"
-            numberOfLines={1}
-          />
-        </View>
-        <Text className={`text-xs shrink-0 ${issueIconColor(item.status as IssueStatus)}`}>
-          {statusLabel}
-        </Text>
-      </View>
+    <View>
+      <IssueRow
+        issue={item}
+        onPress={() => navigateOnTap(slug, `/${slug}/issue/${item.id}`)}
+        showStatus
+      />
       {showSnippet ? (
-        <View className="flex-row items-start gap-2 mt-1 pl-[68px]">
+        <View className="flex-row items-start gap-2 -mt-1 px-4 pb-3 pl-[68px]">
           <Ionicons
             name="chatbubble-outline"
             size={12}
@@ -205,7 +189,7 @@ function SearchIssueRow({ item, query, slug }: SearchIssueRowProps) {
           </View>
         </View>
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 

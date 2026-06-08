@@ -179,7 +179,7 @@ export default function Today() {
         right={
           <>
             <IconButton name="ellipsis-horizontal" onPress={onPressMenu} accessibilityLabel="Today actions" />
-            <HeaderActions />
+            <HeaderActions actions={["search"]} />
           </>
         }
       />
