@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Modal,
   Pressable,
   ScrollView,
   View,
   useWindowDimensions,
 } from "react-native";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { create } from "zustand";
+import { OverlayModalSurface } from "@/components/ui/overlay-modal-surface";
 import { Text } from "@/components/ui/text";
 import { Separator } from "@/components/ui/separator";
 import { THEME } from "@/lib/theme";
@@ -173,72 +170,64 @@ export function ActionMenuHost() {
   const contextual = !!current?.anchor;
 
   return (
-    <Modal
+    <OverlayModalSurface
       visible={!!current}
-      transparent
-      animationType="fade"
-      onRequestClose={close}
+      onClose={close}
+      safeAreaEdges={contextual ? [] : ["bottom"]}
+      backdropClassName={contextual ? "bg-black/12" : "bg-black/28"}
+      contentContainerClassName={contextual ? undefined : "justify-end"}
     >
-      <View className={cn("flex-1", contextual ? "bg-black/12" : "bg-black/28 justify-end")}>
-        <Pressable
-          className="absolute inset-0"
-          onPress={close}
-        />
-
-        {contextual && current && popoverLayout ? (
+      {contextual && current && popoverLayout ? (
+        <View
+          className="absolute rounded-2xl border border-border bg-popover overflow-hidden"
+          style={[shadowStyle, popoverLayout]}
+          onLayout={(event) => {
+            const { width, height } = event.nativeEvent.layout;
+            setContentSize((prev) =>
+              prev?.width === width && prev?.height === height
+                ? prev
+                : { width, height },
+            );
+          }}
+        >
+          <ActionMenuOptions
+            config={current}
+            onPick={onPick}
+            iconColor={theme.mutedForeground}
+            destructiveColor={theme.destructive}
+            maxHeight={320}
+          />
+        </View>
+      ) : current ? (
+        <View className="px-3 pb-3 gap-2">
           <View
-            className="absolute rounded-2xl border border-border bg-popover overflow-hidden"
-            style={[shadowStyle, popoverLayout]}
-            onLayout={(event) => {
-              const { width, height } = event.nativeEvent.layout;
-              setContentSize((prev) =>
-                prev?.width === width && prev?.height === height
-                  ? prev
-                  : { width, height },
-              );
-            }}
+            className="rounded-2xl border border-border bg-popover overflow-hidden"
+            style={shadowStyle}
           >
             <ActionMenuOptions
               config={current}
               onPick={onPick}
               iconColor={theme.mutedForeground}
               destructiveColor={theme.destructive}
-              maxHeight={320}
+              maxHeight={420}
             />
           </View>
-        ) : current ? (
-          <SafeAreaView edges={["bottom"]}>
-            <View className="px-3 pb-3 gap-2">
-              <View
-                className="rounded-2xl border border-border bg-popover overflow-hidden"
-                style={shadowStyle}
-              >
-                <ActionMenuOptions
-                  config={current}
-                  onPick={onPick}
-                  iconColor={theme.mutedForeground}
-                  destructiveColor={theme.destructive}
-                  maxHeight={420}
-                />
-              </View>
-              <View
-                className="rounded-2xl border border-border bg-popover overflow-hidden"
-                style={shadowStyle}
-              >
-                <Pressable
-                  onPress={close}
-                  className="items-center px-4 py-3.5 active:bg-accent"
-                >
-                  <Text className="text-[15px] font-medium text-foreground">
-                    Cancel
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          </SafeAreaView>
-        ) : null}
-      </View>
-    </Modal>
+          <View
+            className="rounded-2xl border border-border bg-popover overflow-hidden"
+            style={shadowStyle}
+          >
+            <Pressable
+              onPress={close}
+              className="items-center px-4 py-3.5 active:bg-accent"
+            >
+              <Text className="text-[15px] font-medium text-foreground">
+                Cancel
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+    </OverlayModalSurface>
   );
 }
 

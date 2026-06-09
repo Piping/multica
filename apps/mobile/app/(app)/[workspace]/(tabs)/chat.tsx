@@ -12,8 +12,10 @@
  * Session switching, agent selection, and session deletion all happen
  * inside this screen via Modal sheets — there is no `/chat/[id]` sub-route.
  *
- * State (all local, none in Zustand):
- *   - activeSessionId   — which session is being viewed (null = new chat blank)
+ * State:
+ *   - activeSessionId   — locally controlled current session id
+ *                         (last non-null value is persisted per workspace so
+ *                         app remounts reopen the same conversation)
  *   - selectedAgentId   — overrides currentSession.agent_id when set (used
  *                         when starting a new chat with a freshly-picked agent)
  *   - sessionSheetOpen  — bottom modal visibility
@@ -67,6 +69,7 @@ import {
   DRAFT_NEW_SESSION,
   useChatDraftsStore,
 } from "@/data/stores/chat-drafts-store";
+import { useChatLastSessionStore } from "@/data/stores/chat-last-session-store";
 import { useChatSessionPickerStore } from "@/data/stores/chat-session-picker-store";
 import { useChatSessionRealtime } from "@/data/realtime/use-chat-session-realtime";
 import { canAssignAgent } from "@/lib/can-assign-agent";
@@ -107,8 +110,20 @@ export default function ChatTab() {
     setStoreActiveSessionId(activeSessionId);
   }, [activeSessionId, setStoreActiveSessionId]);
 
+  const lastSessionHydrated = useChatLastSessionStore((s) => s.hydrated);
+  const lastSessionByWorkspace = useChatLastSessionStore((s) => s.byWorkspace);
+  const rememberLastSession = useChatLastSessionStore((s) => s.remember);
+  const restoreLastSessions = useChatLastSessionStore((s) => s.restore);
+  useEffect(() => {
+    if (lastSessionHydrated) return;
+    void restoreLastSessions();
+  }, [lastSessionHydrated, restoreLastSessions]);
+
   // ── Server state ───────────────────────────────────────────────────────
-  const { data: sessions = [] } = useQuery(chatSessionsOptions(wsId));
+  const {
+    data: sessions = [],
+    isFetched: sessionsFetched,
+  } = useQuery(chatSessionsOptions(wsId));
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
   const { data: members = [] } = useQuery(memberListOptions(wsId));
 
@@ -117,17 +132,39 @@ export default function ChatTab() {
   // state when no `activeSessionId` is persisted; on a phone, picking
   // a session is 4 taps, so jump straight to the most recent session.
   // Hydration is one-shot per workspace.
-  const hydratedWsRef = useRef<string | null>(null);
+  const [hydratedWorkspaceId, setHydratedWorkspaceId] = useState<string | null>(
+    null,
+  );
+  const rememberedSessionId = wsId ? lastSessionByWorkspace[wsId] ?? null : null;
   useEffect(() => {
     if (!wsId) return;
-    if (hydratedWsRef.current === wsId) return;
+    if (!sessionsFetched || !lastSessionHydrated) return;
+    if (hydratedWorkspaceId === wsId) return;
     if (sessions.length === 0) {
-      hydratedWsRef.current = wsId;
+      setHydratedWorkspaceId(wsId);
       return;
     }
-    hydratedWsRef.current = wsId;
-    setActiveSessionId(sessions[0].id);
-  }, [wsId, sessions]);
+    const nextSessionId =
+      rememberedSessionId &&
+      sessions.some((session) => session.id === rememberedSessionId)
+        ? rememberedSessionId
+        : sessions[0].id;
+    setSelectedAgentId(null);
+    setActiveSessionId(nextSessionId);
+    setHydratedWorkspaceId(wsId);
+  }, [
+    wsId,
+    sessions,
+    sessionsFetched,
+    lastSessionHydrated,
+    rememberedSessionId,
+    hydratedWorkspaceId,
+  ]);
+
+  useEffect(() => {
+    if (!wsId || !activeSessionId) return;
+    void rememberLastSession(wsId, activeSessionId);
+  }, [wsId, activeSessionId, rememberLastSession]);
   const { data: messages = [], isLoading: messagesLoading } = useQuery(
     chatMessagesOptions(activeSessionId),
   );
@@ -390,6 +427,9 @@ export default function ChatTab() {
         ? "This chat is archived"
         : undefined;
 
+  const sessionSelectionPending =
+    !!wsId && (!sessionsFetched || !lastSessionHydrated || hydratedWorkspaceId !== wsId);
+
   return (
     <View className="flex-1 bg-background">
       <Header
@@ -418,7 +458,7 @@ export default function ChatTab() {
       <View className="flex-1">
         <ChatMessageList
           messages={messages}
-          loading={messagesLoading}
+          loading={sessionSelectionPending || messagesLoading}
           hasSessions={sessions.length > 0}
           agentName={currentAgent?.name}
           onPickPrompt={(text) => setDraft(draftKey, text)}

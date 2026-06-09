@@ -14,6 +14,7 @@ import type { User } from "@multica/core/types";
 import { api, ApiError } from "./api";
 import { useBackendStore } from "./backend-config";
 import { clearToken, getToken, setToken } from "./secure-storage";
+import { useChatLastSessionStore } from "./stores/chat-last-session-store";
 import { useWorkspaceStore } from "./workspace-store";
 
 interface AuthState {
@@ -39,6 +40,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     // workspace without flashing /select-workspace.
     await useBackendStore.getState().restore();
     await useWorkspaceStore.getState().restoreSlug();
+    await useChatLastSessionStore.getState().restore();
 
     const token = await getToken();
     if (!token) {
@@ -74,6 +76,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     await clearToken();
+    await useChatLastSessionStore.getState().clearAll();
     api.setToken(null);
     set({ user: null });
   },

@@ -76,6 +76,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Pinned", icon: "pin-outline", path: "/more/pins" },
   { label: "Issues", icon: "list-outline", path: "/more/issues" },
   { label: "Projects", icon: "layers-outline", path: "/more/projects" },
+  { label: "Autopilots", icon: "flash-outline", path: "/more/autopilots" },
 ];
 
 export function MoreTabDropdownAnchor({

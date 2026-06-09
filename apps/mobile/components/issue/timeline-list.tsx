@@ -78,6 +78,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   RefreshControl,
   View,
@@ -89,6 +90,7 @@ import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
 import type { AgentTask, Issue, TimelineEntry } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
+import { FloatingListNavigator } from "@/components/ui/floating-list-navigator";
 import { IssueHeaderCard } from "./issue-header-card";
 import { IssueDescription } from "./issue-description";
 import { IssueReactionRow } from "./issue-reaction-row";
@@ -129,11 +131,24 @@ const HIGHLIGHT_HOLD_MS = 5000;
  *  "already at bottom" so the new-comment chip doesn't fire for entries
  *  the user is already about to see. */
 const AT_BOTTOM_SLACK_PX = 80;
+const AT_TOP_SLACK_PX = 24;
+const SCROLLABLE_CONTENT_SLACK_PX = 24;
 
 /** Sentinel id for the "New since last view" divider row injected into the
  *  FlatList data. Picked because it can never collide with a real comment
  *  uuid. */
 const DIVIDER_ID = "__divider__";
+
+interface ScrollStatus {
+  canScroll: boolean;
+  isAtTop: boolean;
+  isAtBottom: boolean;
+}
+
+interface VisibleThreadWindow {
+  first: number | null;
+  last: number | null;
+}
 
 export function TimelineList({
   issue,
@@ -218,6 +233,57 @@ export function TimelineList({
   const [newCount, setNewCount] = useState(0);
   const isAtBottomRef = useRef(true);
   const lastDataLenRef = useRef(0);
+  const [scrollStatus, setScrollStatus] = useState<ScrollStatus>(() => ({
+    canScroll: false,
+    isAtTop: !highlightCommentId,
+    isAtBottom: !!highlightCommentId,
+  }));
+  const scrollStatusRef = useRef(scrollStatus);
+  const viewportHeightRef = useRef(0);
+  const contentHeightRef = useRef(0);
+  const [visibleThreadWindow, setVisibleThreadWindow] =
+    useState<VisibleThreadWindow>({
+      first: null,
+      last: null,
+    });
+  const visibleThreadWindowRef = useRef(visibleThreadWindow);
+
+  const setScrollStatusIfChanged = useCallback((next: ScrollStatus) => {
+    const current = scrollStatusRef.current;
+    if (
+      current.canScroll === next.canScroll &&
+      current.isAtTop === next.isAtTop &&
+      current.isAtBottom === next.isAtBottom
+    ) {
+      return;
+    }
+    scrollStatusRef.current = next;
+    setScrollStatus(next);
+  }, []);
+
+  const setVisibleThreadWindowIfChanged = useCallback(
+    (next: VisibleThreadWindow) => {
+      const current = visibleThreadWindowRef.current;
+      if (current.first === next.first && current.last === next.last) {
+        return;
+      }
+      visibleThreadWindowRef.current = next;
+      setVisibleThreadWindow(next);
+    },
+    [],
+  );
+
+  const syncScrollability = useCallback(() => {
+    const canScroll =
+      contentHeightRef.current >
+      viewportHeightRef.current + SCROLLABLE_CONTENT_SLACK_PX;
+    const current = scrollStatusRef.current;
+    setScrollStatusIfChanged({
+      canScroll,
+      isAtTop: current.isAtTop,
+      isAtBottom: canScroll ? current.isAtBottom : true,
+    });
+  }, [setScrollStatusIfChanged]);
   useEffect(() => {
     const grew = data.length > lastDataLenRef.current;
     const diff = data.length - lastDataLenRef.current;
@@ -233,21 +299,48 @@ export function TimelineList({
   const handleScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      contentHeightRef.current = contentSize.height;
+      viewportHeightRef.current = layoutMeasurement.height;
       const distFromBottom =
         contentSize.height - (contentOffset.y + layoutMeasurement.height);
+      const nextCanScroll =
+        contentSize.height >
+        layoutMeasurement.height + SCROLLABLE_CONTENT_SLACK_PX;
+      const nextAtTop = contentOffset.y <= AT_TOP_SLACK_PX;
+      const nextAtBottom =
+        !nextCanScroll || distFromBottom < AT_BOTTOM_SLACK_PX;
       const wasAtBottom = isAtBottomRef.current;
-      isAtBottomRef.current = distFromBottom < AT_BOTTOM_SLACK_PX;
+      isAtBottomRef.current = nextAtBottom;
+      setScrollStatusIfChanged({
+        canScroll: nextCanScroll,
+        isAtTop: nextAtTop,
+        isAtBottom: nextAtBottom,
+      });
       // Reaching the bottom clears the unread-new chip — same iMessage /
       // chat-app semantic: "I've caught up".
       if (!wasAtBottom && isAtBottomRef.current && newCount > 0) {
         setNewCount(0);
       }
     },
-    [newCount],
+    [newCount, setScrollStatusIfChanged],
   );
 
   const onJumpToNew = useCallback(() => {
     listRef.current?.scrollToEnd({ animated: true });
+    setNewCount(0);
+  }, []);
+
+  const jumpToTop = useCallback(() => {
+    useCommentSelectStore.getState().clear();
+    Keyboard.dismiss();
+    listRef.current?.scrollToOffset({ animated: true, offset: 0 });
+  }, []);
+
+  const jumpToBottom = useCallback(() => {
+    useCommentSelectStore.getState().clear();
+    Keyboard.dismiss();
+    listRef.current?.scrollToEnd({ animated: true });
+    isAtBottomRef.current = true;
     setNewCount(0);
   }, []);
 
@@ -285,6 +378,57 @@ export function TimelineList({
     };
     return [...data.slice(0, anchorIdx), divider, ...data.slice(anchorIdx)];
   }, [data, dividerAnchorId]);
+  const threadRowIndices = useMemo(() => {
+    const indices: number[] = [];
+    for (let index = 0; index < dataWithDivider.length; index += 1) {
+      if (dataWithDivider[index]?.entry.id !== DIVIDER_ID) {
+        indices.push(index);
+      }
+    }
+    return indices;
+  }, [dataWithDivider]);
+  const firstThreadIndex = threadRowIndices[0] ?? null;
+  const lastThreadIndex =
+    threadRowIndices.length > 0
+      ? threadRowIndices[threadRowIndices.length - 1]
+      : null;
+  const previousThreadIndex = useMemo(() => {
+    if (firstThreadIndex == null) return null;
+    const anchor = visibleThreadWindow.first ?? firstThreadIndex;
+    let previous: number | null = null;
+    for (const index of threadRowIndices) {
+      if (index >= anchor) break;
+      previous = index;
+    }
+    return previous;
+  }, [firstThreadIndex, threadRowIndices, visibleThreadWindow.first]);
+  const nextThreadIndex = useMemo(() => {
+    if (lastThreadIndex == null) return null;
+    const anchor =
+      visibleThreadWindow.last ?? firstThreadIndex ?? lastThreadIndex;
+    for (const index of threadRowIndices) {
+      if (index > anchor) return index;
+    }
+    return null;
+  }, [
+    firstThreadIndex,
+    lastThreadIndex,
+    threadRowIndices,
+    visibleThreadWindow.last,
+  ]);
+
+  const jumpToThreadIndex = useCallback((index: number | null) => {
+    if (index == null) return;
+    useCommentSelectStore.getState().clear();
+    Keyboard.dismiss();
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToIndex({
+        animated: true,
+        index,
+        viewPosition: 0.08,
+      });
+    });
+  }, []);
 
   // Mark "scrolled past" once the divider row leaves the viewport — used
   // by the unmount effect below to decide whether to bump last-viewed.
@@ -294,8 +438,22 @@ export function TimelineList({
   );
   const handleViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      if (!dividerAnchorId) return;
-      if (dividerScrolledPastRef.current) return;
+      const visibleThreadIndices = viewableItems
+        .map((item) => item.index)
+        .filter(
+          (index): index is number =>
+            index != null && dataWithDivider[index]?.entry.id !== DIVIDER_ID,
+        )
+        .sort((a, b) => a - b);
+      setVisibleThreadWindowIfChanged({
+        first: visibleThreadIndices[0] ?? null,
+        last:
+          visibleThreadIndices.length > 0
+            ? visibleThreadIndices[visibleThreadIndices.length - 1]
+            : null,
+      });
+
+      if (!dividerAnchorId || dividerScrolledPastRef.current) return;
       const dividerIdx = dataWithDivider.findIndex(
         (r) => r.entry.id === DIVIDER_ID,
       );
@@ -308,7 +466,7 @@ export function TimelineList({
         dividerScrolledPastRef.current = true;
       }
     },
-    [dividerAnchorId, dataWithDivider],
+    [dividerAnchorId, dataWithDivider, setVisibleThreadWindowIfChanged],
   );
   // FlashList v2 captures `viewabilityConfigCallbackPairs` at mount —
   // "Changing viewabilityConfig on the fly is not supported." So we wrap
@@ -462,9 +620,31 @@ export function TimelineList({
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+        onLayout={(event) => {
+          viewportHeightRef.current = event.nativeEvent.layout.height;
+          syncScrollability();
+        }}
+        onContentSizeChange={(_, height) => {
+          contentHeightRef.current = height;
+          syncScrollability();
+        }}
         contentContainerStyle={{ paddingBottom: 16 }}
       />
       </Pressable>
+      {scrollStatus.canScroll ? (
+        <FloatingListNavigator
+          canJumpUp={previousThreadIndex != null}
+          canJumpDown={nextThreadIndex != null}
+          isAtTop={scrollStatus.isAtTop}
+          isAtBottom={scrollStatus.isAtBottom}
+          previousLabel="Jump to previous thread"
+          nextLabel="Jump to next thread"
+          onJumpToTop={jumpToTop}
+          onJumpToPrevious={() => jumpToThreadIndex(previousThreadIndex)}
+          onJumpToNext={() => jumpToThreadIndex(nextThreadIndex)}
+          onJumpToBottom={jumpToBottom}
+        />
+      ) : null}
       {newCount > 0 ? (
         <NewCommentChip count={newCount} onPress={onJumpToNew} />
       ) : null}

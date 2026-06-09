@@ -12,13 +12,13 @@
  * Past-row tap is a no-op in v1 — transcript drilldown is deferred.
  */
 import { useMemo } from "react";
-import { Platform, ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentTask } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { RunRow } from "@/components/issue/run-row";
+import { WorkspaceSheetListSurface } from "@/components/ui/workspace-sheet-list-surface";
 import {
   issueActiveTasksOptions,
   issueTasksOptions,
@@ -66,34 +66,27 @@ export default function IssueRunsRoute() {
   }, [allTasks]);
 
   return (
-    <SafeAreaView
-      className="flex-1 bg-background"
-      edges={Platform.OS === "android" ? ["top"] : []}
+    <WorkspaceSheetListSurface
+      title="Agent Runs"
+      contentContainerClassName="px-4 pb-4"
     >
-      <View className="px-4 pt-4 pb-3">
-        <Text className="text-base font-semibold text-foreground">
-          Agent Runs
-        </Text>
+      <View className="gap-3">
+        {active.length > 0 ? (
+          <Section title="Active">
+            {active.map((task) => (
+              <RunRow key={task.id} task={task} issueId={id} />
+            ))}
+          </Section>
+        ) : null}
+        {past.length > 0 ? (
+          <Section title="Past">
+            {past.map((task) => (
+              <RunRow key={task.id} task={task} issueId={id} />
+            ))}
+          </Section>
+        ) : null}
       </View>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View className="px-4 gap-3 pb-4">
-          {active.length > 0 ? (
-            <Section title="Active">
-              {active.map((task) => (
-                <RunRow key={task.id} task={task} issueId={id} />
-              ))}
-            </Section>
-          ) : null}
-          {past.length > 0 ? (
-            <Section title="Past">
-              {past.map((task) => (
-                <RunRow key={task.id} task={task} issueId={id} />
-              ))}
-            </Section>
-          ) : null}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+    </WorkspaceSheetListSurface>
   );
 }
 

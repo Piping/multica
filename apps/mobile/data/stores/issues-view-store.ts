@@ -17,8 +17,8 @@
  * the union is small enough that a duplicated literal is preferable to a
  * cross-package type import hop.
  *
- * Empty filter array = "show all" (matches web's predicate semantics in
- * packages/views/issues/utils/filter.ts).
+ * Mobile seeds statusFilters with the "active work" default set so completed
+ * issues stay hidden until the user explicitly opts in from the filter sheet.
  *
  * No persist middleware — filters are session-scoped. `clearFilters`
  * deliberately does NOT reset `scope` so a workspace switch keeps the
@@ -27,6 +27,7 @@
  */
 import { create } from "zustand";
 import type { IssuePriority, IssueStatus } from "@multica/core/types";
+import { DEFAULT_MOBILE_ISSUE_STATUS_FILTERS } from "@/lib/issue-filter-defaults";
 
 export type IssuesScope = "all" | "members" | "agents";
 
@@ -42,7 +43,7 @@ interface IssuesViewState {
 
 export const useIssuesViewStore = create<IssuesViewState>((set) => ({
   scope: "all",
-  statusFilters: [],
+  statusFilters: DEFAULT_MOBILE_ISSUE_STATUS_FILTERS,
   priorityFilters: [],
   setScope: (scope) => set({ scope }),
   toggleStatusFilter: (status) =>
@@ -57,5 +58,9 @@ export const useIssuesViewStore = create<IssuesViewState>((set) => ({
         ? state.priorityFilters.filter((p) => p !== priority)
         : [...state.priorityFilters, priority],
     })),
-  clearFilters: () => set({ statusFilters: [], priorityFilters: [] }),
+  clearFilters: () =>
+    set({
+      statusFilters: DEFAULT_MOBILE_ISSUE_STATUS_FILTERS,
+      priorityFilters: [],
+    }),
 }));

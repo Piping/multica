@@ -43,6 +43,7 @@ import {
   STATUS_LABEL,
 } from "@/lib/issue-status";
 import { filterIssues } from "@/lib/filter-issues";
+import { hasCustomMobileIssueFilters } from "@/lib/issue-filter-defaults";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
 
@@ -120,8 +121,10 @@ export default function MyIssues() {
       .filter((s) => s.data.length > 0);
   }, [filtered, statusFilters]);
 
-  const hasActiveFilters =
-    statusFilters.length > 0 || priorityFilters.length > 0;
+  const hasActiveFilters = hasCustomMobileIssueFilters(
+    statusFilters,
+    priorityFilters,
+  );
 
   const showEmptyState =
     !isLoading && !error && filtered.length === 0;
@@ -368,12 +371,12 @@ function EmptyState({ message }: { message: string }) {
 function emptyMessageForScope(scope: MyIssuesScope): string {
   switch (scope) {
     case "assigned":
-      return "No issues assigned to you.";
+      return "No active issues assigned to you.";
     case "all":
-      return "No issues yet.";
+      return "No active issues yet.";
     case "created":
-      return "You haven't created any issues.";
+      return "You haven't created any active issues.";
     case "agents":
-      return "No issues assigned to your agents or squads yet.";
+      return "No active issues assigned to your agents or squads yet.";
   }
 }

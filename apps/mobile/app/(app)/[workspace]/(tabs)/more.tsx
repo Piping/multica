@@ -10,18 +10,21 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentAvailability } from "@multica/core/agents";
+import type { AutopilotStatus } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { Header } from "@/components/ui/header";
 import { ActorAvatar } from "@/components/ui/actor-avatar";
 import { PresenceDot } from "@/components/ui/presence-dot";
 import { HeaderActions } from "@/components/ui/app-header-actions";
 import { agentListOptions } from "@/data/queries/agents";
+import { autopilotListOptions } from "@/data/queries/autopilots";
 import { projectListOptions } from "@/data/queries/projects";
 import { pinListOptions } from "@/data/queries/pins";
 import { useAuthStore } from "@/data/auth-store";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { useWorkspacePresenceMap } from "@/lib/use-agent-presence";
 import { useColorScheme } from "@/lib/use-color-scheme";
+import { timeAgo } from "@/lib/time-ago";
 import { THEME } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +50,12 @@ const NAV_ITEMS = [
     path: "/more/agents",
   },
   {
+    label: "Autopilots",
+    subtitle: "Automation, schedules, and webhooks",
+    icon: "flash-outline" as IoniconName,
+    path: "/more/autopilots",
+  },
+  {
     label: "Pinned",
     subtitle: "Saved issues and projects",
     icon: "pin-outline" as IoniconName,
@@ -70,6 +79,7 @@ export default function WorkspaceTab() {
   const { data: agents = [], isLoading: agentsLoading } = useQuery(
     agentListOptions(wsId),
   );
+  const { data: autopilots = [] } = useQuery(autopilotListOptions(wsId));
   const { data: projects = [] } = useQuery(projectListOptions(wsId));
   const { data: pins = [] } = useQuery(pinListOptions(wsId, userId));
   const { byAgent: presenceMap, loading: presenceLoading } =
@@ -92,6 +102,22 @@ export default function WorkspaceTab() {
     }
     return counts;
   }, [activeAgents, presenceMap]);
+  const autopilotCounts = useMemo(
+    () =>
+      autopilots.reduce(
+        (acc, autopilot) => {
+          acc.total += 1;
+          acc[autopilot.status] += 1;
+          return acc;
+        },
+        { total: 0, active: 0, paused: 0, archived: 0 } as Record<
+          "total" | AutopilotStatus,
+          number
+        >,
+      ),
+    [autopilots],
+  );
+  const previewAutopilots = autopilots.slice(0, 2);
 
   const go = (path: string) => {
     if (wsSlug) router.push(`/${wsSlug}${path}`);
@@ -101,6 +127,9 @@ export default function WorkspaceTab() {
   };
   const goChat = () => {
     if (wsSlug) router.push(`/${wsSlug}/chat`);
+  };
+  const goNewAutopilot = () => {
+    if (wsSlug) router.push(`/${wsSlug}/more/autopilots/new`);
   };
 
   return (
@@ -177,6 +206,74 @@ export default function WorkspaceTab() {
           <Metric label="Offline" value={availabilityCounts.offline} />
         </View>
 
+        <View className="rounded-md border border-border bg-card p-4 gap-4">
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1 min-w-0">
+              <Text className="text-xs uppercase tracking-wider text-muted-foreground">
+                Autopilots
+              </Text>
+              <Text className="text-xl font-semibold text-foreground mt-1">
+                {autopilotCounts.active} active
+              </Text>
+              <Text className="text-sm text-muted-foreground mt-1">
+                {autopilotCounts.paused} paused · {autopilotCounts.archived} archived
+              </Text>
+            </View>
+            <Ionicons name="flash-outline" size={20} color={iconColor} />
+          </View>
+
+          {previewAutopilots.length > 0 ? (
+            <View className="gap-3">
+              {previewAutopilots.map((autopilot) => (
+                <Pressable
+                  key={autopilot.id}
+                  onPress={() => go(`/more/autopilots/${autopilot.id}`)}
+                  className="flex-row items-center gap-3 rounded-md active:bg-secondary"
+                >
+                  <View className="size-9 rounded-md bg-secondary items-center justify-center">
+                    <Ionicons name="flash-outline" size={16} color={iconColor} />
+                  </View>
+                  <View className="flex-1 min-w-0">
+                    <Text
+                      className="text-sm font-medium text-foreground"
+                      numberOfLines={1}
+                    >
+                      {autopilot.title}
+                    </Text>
+                    <Text
+                      className="text-xs text-muted-foreground"
+                      numberOfLines={1}
+                    >
+                      {autopilot.last_run_at
+                        ? `Last run ${timeAgo(autopilot.last_run_at)}`
+                        : "No runs yet"}
+                    </Text>
+                  </View>
+                  <AutopilotPill status={autopilot.status} />
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <Text className="text-sm text-muted-foreground">
+              Build a workspace automation, then add schedules or webhooks from
+              its detail page.
+            </Text>
+          )}
+
+          <View className="flex-row gap-2">
+            <QuickAction
+              label="Autopilots"
+              icon="flash-outline"
+              onPress={() => go("/more/autopilots")}
+            />
+            <QuickAction
+              label="New Autopilot"
+              icon="add"
+              onPress={goNewAutopilot}
+            />
+          </View>
+        </View>
+
         <View className="rounded-md border border-border bg-card overflow-hidden">
           {NAV_ITEMS.map((item, idx) => (
             <View key={item.path}>
@@ -248,6 +345,36 @@ function Metric({ label, value }: { label: string; value: number }) {
     <View className="flex-1 rounded-md border border-border bg-card px-3 py-3">
       <Text className="text-xl font-semibold text-foreground">{value}</Text>
       <Text className="text-xs text-muted-foreground mt-0.5">{label}</Text>
+    </View>
+  );
+}
+
+function AutopilotPill({ status }: { status: AutopilotStatus }) {
+  const active = status === "active";
+  const paused = status === "paused";
+  return (
+    <View
+      className={cn(
+        "rounded-full px-2 py-1",
+        active
+          ? "bg-brand/10"
+          : paused
+            ? "bg-amber-500/10"
+            : "bg-secondary",
+      )}
+    >
+      <Text
+        className={cn(
+          "text-xs capitalize",
+          active
+            ? "text-brand"
+            : paused
+              ? "text-amber-700"
+              : "text-muted-foreground",
+        )}
+      >
+        {status}
+      </Text>
     </View>
   );
 }

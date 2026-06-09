@@ -9,15 +9,16 @@
  *
  * Self-contained: reads/writes the store directly, no callback passing.
  */
-import { Platform, Pressable, ScrollView, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 import type { IssuePriority, IssueStatus } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { StatusIcon } from "@/components/ui/status-icon";
 import { PriorityIcon } from "@/components/ui/priority-icon";
+import { WorkspaceSheetListSurface } from "@/components/ui/workspace-sheet-list-surface";
 import { useIssuesViewStore } from "@/data/stores/issues-view-store";
 import { useMyIssuesViewStore } from "@/data/stores/my-issues-view-store";
+import { hasCustomMobileIssueFilters } from "@/lib/issue-filter-defaults";
 import { BOARD_STATUSES, STATUS_LABEL } from "@/lib/issue-status";
 import { cn } from "@/lib/utils";
 
@@ -73,16 +74,16 @@ export default function IssuesFilterRoute() {
     }
   };
 
-  const hasActive = statusFilters.length > 0 || priorityFilters.length > 0;
+  const hasActive = hasCustomMobileIssueFilters(
+    statusFilters,
+    priorityFilters,
+  );
 
   return (
-    <SafeAreaView
-      className="flex-1 bg-background"
-      edges={Platform.OS === "android" ? ["top"] : []}
-    >
-      <View className="flex-row items-center justify-between px-4 pt-4 pb-3">
-        <Text className="text-base font-semibold text-foreground">Filter</Text>
-        {hasActive ? (
+    <WorkspaceSheetListSurface
+      title="Filter"
+      headerRight={
+        hasActive ? (
           <Pressable
             onPress={onClearFilters}
             hitSlop={8}
@@ -90,52 +91,51 @@ export default function IssuesFilterRoute() {
           >
             <Text className="text-sm text-primary font-medium">Reset</Text>
           </Pressable>
-        ) : null}
-      </View>
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <SectionLabel>Status</SectionLabel>
-        {ALL_STATUSES.map((status) => {
-          const checked = statusFilters.includes(status);
-          return (
-            <Pressable
-              key={status}
-              onPress={() => onToggleStatus(status)}
-              className={cn(
-                "flex-row items-center gap-3 px-4 py-2.5 active:bg-secondary",
-                checked && "bg-secondary/60",
-              )}
-            >
-              <StatusIcon status={status} size={16} />
-              <Text className="flex-1 text-sm text-foreground">
-                {STATUS_LABEL[status]}
-              </Text>
-              <CheckMark checked={checked} />
-            </Pressable>
-          );
-        })}
+        ) : null
+      }
+    >
+      <SectionLabel>Status</SectionLabel>
+      {ALL_STATUSES.map((status) => {
+        const checked = statusFilters.includes(status);
+        return (
+          <Pressable
+            key={status}
+            onPress={() => onToggleStatus(status)}
+            className={cn(
+              "flex-row items-center gap-3 px-4 py-2.5 active:bg-secondary",
+              checked && "bg-secondary/60",
+            )}
+          >
+            <StatusIcon status={status} size={16} />
+            <Text className="flex-1 text-sm text-foreground">
+              {STATUS_LABEL[status]}
+            </Text>
+            <CheckMark checked={checked} />
+          </Pressable>
+        );
+      })}
 
-        <SectionLabel>Priority</SectionLabel>
-        {PRIORITY_ORDER.map((priority) => {
-          const checked = priorityFilters.includes(priority);
-          return (
-            <Pressable
-              key={priority}
-              onPress={() => onTogglePriority(priority)}
-              className={cn(
-                "flex-row items-center gap-3 px-4 py-2.5 active:bg-secondary",
-                checked && "bg-secondary/60",
-              )}
-            >
-              <PriorityIcon priority={priority} />
-              <Text className="flex-1 text-sm text-foreground">
-                {PRIORITY_LABEL[priority]}
-              </Text>
-              <CheckMark checked={checked} />
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-    </SafeAreaView>
+      <SectionLabel>Priority</SectionLabel>
+      {PRIORITY_ORDER.map((priority) => {
+        const checked = priorityFilters.includes(priority);
+        return (
+          <Pressable
+            key={priority}
+            onPress={() => onTogglePriority(priority)}
+            className={cn(
+              "flex-row items-center gap-3 px-4 py-2.5 active:bg-secondary",
+              checked && "bg-secondary/60",
+            )}
+          >
+            <PriorityIcon priority={priority} />
+            <Text className="flex-1 text-sm text-foreground">
+              {PRIORITY_LABEL[priority]}
+            </Text>
+            <CheckMark checked={checked} />
+          </Pressable>
+        );
+      })}
+    </WorkspaceSheetListSurface>
   );
 }
 

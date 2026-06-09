@@ -17,20 +17,28 @@ import type {
   Agent,
   AgentTask,
   Attachment,
+  Autopilot,
+  AutopilotRun,
+  AutopilotTrigger,
   ChatMessage,
   ChatPendingTask,
   CreateAgentRequest,
+  CreateAutopilotRequest,
+  CreateAutopilotTriggerRequest,
   ChatSession,
   Comment,
   CreateIssueRequest,
   CreateLabelRequest,
   CreateProjectRequest,
   CreateProjectResourceRequest,
+  GetAutopilotResponse,
   InboxItem,
   Issue,
   IssueLabelsResponse,
   Label,
   IssueReaction,
+  ListAutopilotRunsResponse,
+  ListAutopilotsResponse,
   ListIssuesParams,
   ListIssuesResponse,
   ListLabelsResponse,
@@ -54,6 +62,8 @@ import type {
   TaskMessagePayload,
   TimelineEntry,
   UpdateAgentRequest,
+  UpdateAutopilotRequest,
+  UpdateAutopilotTriggerRequest,
   UpdateIssueRequest,
   UpdateMeRequest,
   UpdateProjectRequest,
@@ -74,6 +84,9 @@ import {
   AgentTaskListSchema,
   AttachmentListSchema,
   AttachmentSchema,
+  AutopilotRunSchema,
+  AutopilotSchema,
+  AutopilotTriggerSchema,
   ChatMessageSchema,
   ChatMessageListSchema,
   CommentSchema,
@@ -85,12 +98,18 @@ import {
   EMPTY_AGENT_LIST,
   EMPTY_AGENT_TASK_LIST,
   EMPTY_ATTACHMENT_LIST,
+  EMPTY_AUTOPILOT,
+  EMPTY_AUTOPILOT_RUN,
+  EMPTY_AUTOPILOT_TRIGGER,
   EMPTY_CHAT_MESSAGE_LIST,
   EMPTY_CHAT_PENDING_TASK,
   EMPTY_CHAT_SESSION_LIST,
   EMPTY_COMMENT,
+  EMPTY_GET_AUTOPILOT_RESPONSE,
   EMPTY_INBOX_LIST,
   EMPTY_ISSUE_FALLBACK,
+  EMPTY_LIST_AUTOPILOT_RUNS_RESPONSE,
+  EMPTY_LIST_AUTOPILOTS_RESPONSE,
   EMPTY_LIST_LABELS_RESPONSE,
   EMPTY_LIST_PROJECT_RESOURCES_RESPONSE,
   EMPTY_LIST_PROJECTS_RESPONSE,
@@ -105,7 +124,10 @@ import {
   EMPTY_SQUAD_LIST,
   EMPTY_USER,
   EMPTY_WORKSPACE_LIST,
+  GetAutopilotResponseSchema,
   InboxListSchema,
+  ListAutopilotRunsResponseSchema,
+  ListAutopilotsResponseSchema,
   NotificationPreferenceResponseSchema,
   PendingChatTasksResponseSchema,
   ListLabelsResponseSchema,
@@ -895,6 +917,157 @@ class ApiClient {
     return this.fetch<IssueLabelsResponse>(
       `/api/issues/${issueId}/labels/${labelId}`,
       { method: "DELETE" },
+    );
+  }
+
+  // --- Autopilots ---
+  async listAutopilots(opts?: {
+    status?: string;
+    signal?: AbortSignal;
+  }): Promise<ListAutopilotsResponse> {
+    const search = new URLSearchParams();
+    if (opts?.status) search.set("status", opts.status);
+    const qs = search.toString();
+    const raw = await this.fetch<unknown>(
+      `/api/autopilots${qs ? `?${qs}` : ""}`,
+      { signal: opts?.signal },
+    );
+    return parseWithFallback(
+      raw,
+      ListAutopilotsResponseSchema,
+      EMPTY_LIST_AUTOPILOTS_RESPONSE,
+      { endpoint: "GET /api/autopilots" },
+    );
+  }
+
+  async getAutopilot(
+    id: string,
+    opts?: { signal?: AbortSignal },
+  ): Promise<GetAutopilotResponse> {
+    const raw = await this.fetch<unknown>(`/api/autopilots/${id}`, {
+      signal: opts?.signal,
+    });
+    return parseWithFallback(
+      raw,
+      GetAutopilotResponseSchema,
+      EMPTY_GET_AUTOPILOT_RESPONSE,
+      { endpoint: "GET /api/autopilots/:id" },
+    );
+  }
+
+  async createAutopilot(body: CreateAutopilotRequest): Promise<Autopilot> {
+    return this.fetchValidatedWith(
+      "/api/autopilots",
+      AutopilotSchema,
+      EMPTY_AUTOPILOT,
+      { method: "POST", body: JSON.stringify(body) },
+      { endpoint: "POST /api/autopilots" },
+    );
+  }
+
+  async updateAutopilot(
+    id: string,
+    body: UpdateAutopilotRequest,
+  ): Promise<Autopilot> {
+    return this.fetchValidatedWith(
+      `/api/autopilots/${id}`,
+      AutopilotSchema,
+      { ...EMPTY_AUTOPILOT, id },
+      { method: "PATCH", body: JSON.stringify(body) },
+      { endpoint: "PATCH /api/autopilots/:id" },
+    );
+  }
+
+  async deleteAutopilot(id: string): Promise<void> {
+    await this.fetch<void>(`/api/autopilots/${id}`, { method: "DELETE" });
+  }
+
+  async triggerAutopilot(id: string): Promise<AutopilotRun> {
+    return this.fetchValidatedWith(
+      `/api/autopilots/${id}/trigger`,
+      AutopilotRunSchema,
+      { ...EMPTY_AUTOPILOT_RUN, autopilot_id: id },
+      { method: "POST" },
+      { endpoint: "POST /api/autopilots/:id/trigger" },
+    );
+  }
+
+  async listAutopilotRuns(
+    id: string,
+    opts?: { limit?: number; offset?: number; signal?: AbortSignal },
+  ): Promise<ListAutopilotRunsResponse> {
+    const search = new URLSearchParams();
+    if (opts?.limit != null) search.set("limit", String(opts.limit));
+    if (opts?.offset != null) search.set("offset", String(opts.offset));
+    const qs = search.toString();
+    const raw = await this.fetch<unknown>(
+      `/api/autopilots/${id}/runs${qs ? `?${qs}` : ""}`,
+      { signal: opts?.signal },
+    );
+    return parseWithFallback(
+      raw,
+      ListAutopilotRunsResponseSchema,
+      EMPTY_LIST_AUTOPILOT_RUNS_RESPONSE,
+      { endpoint: "GET /api/autopilots/:id/runs" },
+    );
+  }
+
+  async createAutopilotTrigger(
+    autopilotId: string,
+    body: CreateAutopilotTriggerRequest,
+  ): Promise<AutopilotTrigger> {
+    return this.fetchValidatedWith(
+      `/api/autopilots/${autopilotId}/triggers`,
+      AutopilotTriggerSchema,
+      { ...EMPTY_AUTOPILOT_TRIGGER, autopilot_id: autopilotId },
+      { method: "POST", body: JSON.stringify(body) },
+      { endpoint: "POST /api/autopilots/:id/triggers" },
+    );
+  }
+
+  async updateAutopilotTrigger(
+    autopilotId: string,
+    triggerId: string,
+    body: UpdateAutopilotTriggerRequest,
+  ): Promise<AutopilotTrigger> {
+    return this.fetchValidatedWith(
+      `/api/autopilots/${autopilotId}/triggers/${triggerId}`,
+      AutopilotTriggerSchema,
+      {
+        ...EMPTY_AUTOPILOT_TRIGGER,
+        id: triggerId,
+        autopilot_id: autopilotId,
+      },
+      { method: "PATCH", body: JSON.stringify(body) },
+      { endpoint: "PATCH /api/autopilots/:id/triggers/:triggerId" },
+    );
+  }
+
+  async deleteAutopilotTrigger(
+    autopilotId: string,
+    triggerId: string,
+  ): Promise<void> {
+    await this.fetch<void>(
+      `/api/autopilots/${autopilotId}/triggers/${triggerId}`,
+      { method: "DELETE" },
+    );
+  }
+
+  async rotateAutopilotTriggerWebhookToken(
+    autopilotId: string,
+    triggerId: string,
+  ): Promise<AutopilotTrigger> {
+    return this.fetchValidatedWith(
+      `/api/autopilots/${autopilotId}/triggers/${triggerId}/rotate-webhook-token`,
+      AutopilotTriggerSchema,
+      {
+        ...EMPTY_AUTOPILOT_TRIGGER,
+        id: triggerId,
+        autopilot_id: autopilotId,
+        kind: "webhook",
+      },
+      { method: "POST" },
+      { endpoint: "POST /api/autopilots/:id/triggers/:triggerId/rotate-webhook-token" },
     );
   }
 

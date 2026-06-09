@@ -1,7 +1,5 @@
 import { useEffect } from "react";
-import type { ComponentProps } from "react";
 import { Redirect, Stack, useLocalSearchParams } from "expo-router";
-import { Platform } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { AppLaunchSkeleton } from "@/components/app/app-launch-skeleton";
 import { workspaceListOptions } from "@/data/queries/workspaces";
@@ -14,52 +12,12 @@ import { useChatSessionsRealtime } from "@/data/realtime/use-chat-sessions-realt
 import { useProjectsRealtime } from "@/data/realtime/use-projects-realtime";
 import { usePinsRealtime } from "@/data/realtime/use-pins-realtime";
 import { usePresenceRealtime } from "@/data/realtime/use-presence-realtime";
+import { useAutopilotsRealtime } from "@/data/realtime/use-autopilots-realtime";
 import { useWorkspacePresencePrefetch } from "@/lib/use-workspace-presence-prefetch";
-import { ModalCloseButton } from "@/components/ui/modal-close-button";
 import { useNewIssueDraftResetOnWorkspaceChange } from "@/data/stores/new-issue-draft-store";
 import { useNewProjectDraftResetOnWorkspaceChange } from "@/data/stores/new-project-draft-store";
 import { useChatSessionPickerResetOnWorkspaceChange } from "@/data/stores/chat-session-picker-store";
-
-/**
- * Shared Stack.Screen options for every sheet route.
- *
- * Why these specific values:
- *   - `presentation: "formSheet"` instantiates iOS
- *     UISheetPresentationController — native grabber, stacked-card backdrop,
- *     drag-to-dismiss spring physics, detents.
- *   - Android falls back to `presentation: "modal"` — Expo Router maps the
- *     screen to a regular modal card there, which is the stable cross-SDK
- *     path for a fully interactive route body.
- *   - `sheetAllowedDetents: [0.6, 0.95]` — explicit numeric detents. The
- *     ergonomic `"fitToContents"` is broken on iOS 26 + Expo 55
- *     (expo/expo#42904 padding inconsistency, expo/expo#42965 zero-size).
- *     Predictable two-snap presentation across every picker-row sheet >
- *     shrink-wrap; this is the right default for sheets that sit next to
- *     other sheets in the same chip row (issue / project AttributeRow) so
- *     the user gets the same gesture regardless of which chip they tap.
- *     Isolated sheets that have no neighbour to be consistent with (e.g.
- *     the workspace `menu` sheet) override this with `"fitToContents"`
- *     to avoid the large blank area below their content.
- *   - `sheetGrabberVisible: true` — surfaces the iOS native drag handle
- *     so users discover the gesture.
- *   - `contentStyle.height: "100%"` — safety net against the same
- *     zero-size class of bugs above; ensures the sheet body fills the
- *     allotted detent.
- *   - `headerShown: false` — every sheet body draws its own header (title
- *     + optional right action). The native Stack header would double up.
- */
-const SHEET_OPTIONS: ComponentProps<typeof Stack.Screen>["options"] = {
-  presentation: Platform.OS === "ios" ? "formSheet" : "modal",
-  ...(Platform.OS === "ios"
-    ? {
-        sheetGrabberVisible: true,
-        sheetAllowedDetents: [0.6, 0.95],
-        sheetCornerRadius: 20,
-      }
-    : {}),
-  contentStyle: { flex: 1 },
-  headerShown: false,
-};
+import { workspaceRouteOptions } from "@/lib/workspace-route-surface";
 
 /**
  * Cold-start deep-link anchor. Expo Router otherwise treats whatever
@@ -88,6 +46,7 @@ function RealtimeSubscriptions() {
   useChatSessionsRealtime();
   useProjectsRealtime();
   usePinsRealtime();
+  useAutopilotsRealtime();
   // Presence: warm the three queries up front so avatars don't flash a
   // dotless first render, and listen for daemon/agent/task events to keep
   // the runtime + snapshot caches fresh. See use-presence-realtime.ts for
@@ -140,44 +99,44 @@ export default function WorkspaceLayout() {
     <RealtimeProvider>
       <RealtimeSubscriptions />
       <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="(tabs)"
+          options={workspaceRouteOptions({ surface: "tabs-root" })}
+        />
         <Stack.Screen
           name="issue/[id]"
-          options={{
+          options={workspaceRouteOptions({
+            surface: "push-detail",
             title: "Issue",
-            headerBackTitle: "Back",
-          }}
+          })}
         />
         <Stack.Screen
           name="project/[id]"
-          options={{
+          options={workspaceRouteOptions({
+            surface: "push-detail",
             title: "Project",
-            headerBackTitle: "Back",
-          }}
+          })}
         />
         <Stack.Screen
           name="project/[id]/edit"
-          options={{
+          options={workspaceRouteOptions({
+            surface: "modal-form",
             title: "Edit Project",
-            presentation: "modal",
-            headerLeft: () => <ModalCloseButton />,
-          }}
+          })}
         />
         <Stack.Screen
           name="issue/[id]/edit"
-          options={{
+          options={workspaceRouteOptions({
+            surface: "modal-form",
             title: "Edit Issue",
-            presentation: "modal",
-            headerLeft: () => <ModalCloseButton />,
-          }}
+          })}
         />
         <Stack.Screen
           name="project/new"
-          options={{
+          options={workspaceRouteOptions({
+            surface: "modal-form",
             title: "New Project",
-            presentation: "modal",
-            headerLeft: () => <ModalCloseButton />,
-          }}
+          })}
         />
         {/* Issue-detail formSheet pickers. All share the same sheet config:
             explicit numeric detents to dodge expo/expo#42904+#42965 (the
@@ -186,11 +145,11 @@ export default function WorkspaceLayout() {
             net against the same zero-size class of bugs. */}
         <Stack.Screen
           name="issue/[id]/picker/status"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         <Stack.Screen
           name="issue/[id]/picker/priority"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         {/* Experiment: assignee uses iOS-native nav header + UISearchController
             instead of the body-rendered header pattern in SHEET_OPTIONS.
@@ -201,72 +160,70 @@ export default function WorkspaceLayout() {
             and update CLAUDE.md Lesson 6 with a carve-out. */}
         <Stack.Screen
           name="issue/[id]/picker/assignee"
-          options={{
-            ...SHEET_OPTIONS,
-            headerShown: true,
+          options={workspaceRouteOptions({
+            surface: "sheet-native-header",
             title: "Assignee",
-          }}
+          })}
         />
         <Stack.Screen
           name="issue/[id]/picker/label"
-          options={{
-            ...SHEET_OPTIONS,
-            headerShown: true,
+          options={workspaceRouteOptions({
+            surface: "sheet-native-header",
             title: "Labels",
-          }}
+          })}
         />
         <Stack.Screen
           name="mention-picker"
-          options={{
-            ...SHEET_OPTIONS,
-            headerShown: true,
+          options={workspaceRouteOptions({
+            surface: "sheet-native-header",
             title: "Mention",
-          }}
+          })}
         />
         <Stack.Screen
           name="issue/[id]/picker/project"
-          options={{
-            ...SHEET_OPTIONS,
-            headerShown: true,
+          options={workspaceRouteOptions({
+            surface: "sheet-native-header",
             title: "Project",
-          }}
+          })}
         />
         <Stack.Screen
           name="issue/[id]/picker/due-date"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
-        <Stack.Screen name="issue/[id]/runs" options={SHEET_OPTIONS} />
+        <Stack.Screen
+          name="issue/[id]/runs"
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
+        />
         {/* Full emoji picker for a comment reaction. Pushed from the "+"
             button inside the comment long-press tapback row — see
             components/issue/comment-context-menu.tsx. */}
         <Stack.Screen
           name="issue/[id]/comment/[commentId]/emoji-picker"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         <Stack.Screen
           name="issue/[id]/history"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         {/* Project-detail formSheet pickers. */}
         <Stack.Screen
           name="project/[id]/picker/status"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         <Stack.Screen
           name="project/[id]/picker/priority"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         <Stack.Screen
           name="project/[id]/picker/lead"
-          options={{
-            ...SHEET_OPTIONS,
-            headerShown: true,
+          options={workspaceRouteOptions({
+            surface: "sheet-native-header",
             title: "Lead",
-          }}
+          })}
         />
         <Stack.Screen
           name="project/[id]/add-resource"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         {/* New-issue draft formSheet pickers — stacked on top of the
             new-issue.tsx Stack.Screen (which is itself a `modal`).
@@ -274,117 +231,180 @@ export default function WorkspaceLayout() {
             of a modal in the same Stack. */}
         <Stack.Screen
           name="new-issue-picker/status"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         <Stack.Screen
           name="new-issue-picker/priority"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         <Stack.Screen
           name="new-issue-picker/assignee"
-          options={{
-            ...SHEET_OPTIONS,
-            headerShown: true,
+          options={workspaceRouteOptions({
+            surface: "sheet-native-header",
             title: "Assignee",
-          }}
+          })}
         />
         <Stack.Screen
           name="new-issue-picker/project"
-          options={{
-            ...SHEET_OPTIONS,
-            headerShown: true,
+          options={workspaceRouteOptions({
+            surface: "sheet-native-header",
             title: "Project",
-          }}
+          })}
         />
         <Stack.Screen
           name="new-issue-picker/due-date"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         {/* New-project draft formSheet pickers — same pattern as
             new-issue-picker/*. Stacked on top of `project/new` (a modal). */}
         <Stack.Screen
           name="new-project-picker/status"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         <Stack.Screen
           name="new-project-picker/priority"
-          options={SHEET_OPTIONS}
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
         />
         {/* Shared filter sheet for My Issues and the workspace Issues page —
             chooses the right view-store via `?scope=my|all` URL param. */}
-        <Stack.Screen name="issues-filter" options={SHEET_OPTIONS} />
+        <Stack.Screen
+          name="issues-filter"
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
+        />
         {/* Chat session-switch sheet. */}
-        <Stack.Screen name="chat-sessions" options={SHEET_OPTIONS} />
+        <Stack.Screen
+          name="chat-sessions"
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
+        />
         {/* Workspace switcher — reached from the More popover's collapsed
             WorkspaceCard. Two-step (pick → iOS Alert confirm → switch). */}
-        <Stack.Screen name="switch-workspace" options={SHEET_OPTIONS} />
+        <Stack.Screen
+          name="switch-workspace"
+          options={workspaceRouteOptions({ surface: "sheet-list" })}
+        />
+        <Stack.Screen
+          name="more/autopilots"
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Autopilots",
+          })}
+        />
+        <Stack.Screen
+          name="more/autopilots/new"
+          options={workspaceRouteOptions({
+            surface: "modal-form",
+            title: "New Autopilot",
+          })}
+        />
+        <Stack.Screen
+          name="more/autopilots/[id]"
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Autopilot",
+            headerBackTitle: "Autopilots",
+          })}
+        />
+        <Stack.Screen
+          name="more/autopilots/[id]/edit"
+          options={workspaceRouteOptions({
+            surface: "modal-form",
+            title: "Edit Autopilot",
+          })}
+        />
         <Stack.Screen
           name="more/issues"
-          options={{ title: "Issues", headerBackTitle: "Back" }}
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Issues",
+          })}
         />
         <Stack.Screen
           name="more/projects"
-          options={{ title: "Projects", headerBackTitle: "Back" }}
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Projects",
+          })}
         />
         <Stack.Screen
           name="more/agents"
-          options={{ title: "Agents", headerBackTitle: "Back" }}
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Agents",
+          })}
         />
         <Stack.Screen
           name="more/agents/new"
-          options={{
+          options={workspaceRouteOptions({
+            surface: "modal-form",
             title: "New Agent",
-            presentation: "modal",
-            headerLeft: () => <ModalCloseButton />,
-          }}
+          })}
         />
         <Stack.Screen
           name="more/runtimes/new"
-          options={{ title: "Add Runtime", headerBackTitle: "Workspace" }}
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Add Runtime",
+            headerBackTitle: "Workspace",
+          })}
         />
         <Stack.Screen
           name="more/agents/[id]"
-          options={{ title: "Agent", headerBackTitle: "Agents" }}
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Agent",
+            headerBackTitle: "Agents",
+          })}
         />
         <Stack.Screen
           name="more/agents/[id]/edit"
-          options={{
+          options={workspaceRouteOptions({
+            surface: "modal-form",
             title: "Edit Agent",
-            presentation: "modal",
-            headerLeft: () => <ModalCloseButton />,
-          }}
+          })}
         />
         <Stack.Screen
           name="more/pins"
-          options={{ title: "Pinned", headerBackTitle: "Back" }}
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Pinned",
+          })}
         />
         <Stack.Screen
           name="more/settings"
-          options={{ title: "Settings", headerBackTitle: "Back" }}
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Settings",
+          })}
         />
         <Stack.Screen
           name="more/settings/profile"
-          options={{ title: "Profile", headerBackTitle: "Settings" }}
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Profile",
+            headerBackTitle: "Settings",
+          })}
         />
         <Stack.Screen
           name="more/settings/notifications"
-          options={{ title: "Notifications", headerBackTitle: "Settings" }}
+          options={workspaceRouteOptions({
+            surface: "push-detail",
+            title: "Notifications",
+            headerBackTitle: "Settings",
+          })}
         />
         <Stack.Screen
           name="new-issue"
-          options={{
+          options={workspaceRouteOptions({
+            surface: "modal-form",
             title: "New Issue",
-            presentation: "modal",
-            headerLeft: () => <ModalCloseButton />,
-          }}
+          })}
         />
         <Stack.Screen
           name="search"
-          options={{
+          options={workspaceRouteOptions({
+            surface: "modal-form",
             title: "Search",
-            presentation: "modal",
-            headerLeft: () => <ModalCloseButton />,
-          }}
+          })}
         />
       </Stack>
     </RealtimeProvider>

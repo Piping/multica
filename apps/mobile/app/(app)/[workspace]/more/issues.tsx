@@ -48,6 +48,7 @@ import {
   STATUS_LABEL,
 } from "@/lib/issue-status";
 import { filterIssues } from "@/lib/filter-issues";
+import { hasCustomMobileIssueFilters } from "@/lib/issue-filter-defaults";
 import { useColorScheme } from "@/lib/use-color-scheme";
 import { THEME } from "@/lib/theme";
 
@@ -130,8 +131,10 @@ export default function IssuesPage() {
       .filter((s) => s.data.length > 0);
   }, [filtered, statusFilters]);
 
-  const hasActiveFilters =
-    statusFilters.length > 0 || priorityFilters.length > 0;
+  const hasActiveFilters = hasCustomMobileIssueFilters(
+    statusFilters,
+    priorityFilters,
+  );
 
   const showEmptyState = !isLoading && !error && filtered.length === 0;
 
@@ -374,10 +377,10 @@ function EmptyState({ message }: { message: string }) {
 function emptyMessageForScope(scope: IssuesScope): string {
   switch (scope) {
     case "all":
-      return "No issues in this workspace.";
+      return "No active issues in this workspace.";
     case "members":
-      return "No issues assigned to a member.";
+      return "No active issues assigned to a member.";
     case "agents":
-      return "No issues assigned to agents or squads.";
+      return "No active issues assigned to agents or squads.";
   }
 }

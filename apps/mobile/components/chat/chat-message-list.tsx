@@ -38,8 +38,17 @@
  * `startRenderingFromBottom` (initial paint at bottom, no setTimeout
  * hacks). Cell recycling also keeps scroll-up smooth.
  */
-import { ActivityIndicator, Pressable, View } from "react-native";
-import { FlashList } from "@shopify/flash-list";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Keyboard,
+  Pressable,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type ViewToken,
+} from "react-native";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import type {
@@ -59,11 +68,27 @@ import { useChatMessageLongPress } from "./message-long-press";
 import { ChatEmptyState } from "./chat-empty-state";
 import { ChatTimeline } from "./chat-timeline";
 import { StatusPill } from "./status-pill";
+import { FloatingListNavigator } from "@/components/ui/floating-list-navigator";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+
+const AT_BOTTOM_SLACK_PX = 80;
+const AT_TOP_SLACK_PX = 24;
+const SCROLLABLE_CONTENT_SLACK_PX = 24;
+
+interface ScrollStatus {
+  canScroll: boolean;
+  isAtTop: boolean;
+  isAtBottom: boolean;
+}
+
+interface VisibleMessageWindow {
+  first: number | null;
+  last: number | null;
+}
 
 interface Props {
   messages: ChatMessage[];
@@ -111,6 +136,152 @@ export function ChatMessageList({
   // Pressable below. When null, the Pressable stays disabled and every tap
   // passes through to the list cells / bubble long-press wrappers normally.
   const selectingId = useChatSelectStore((s) => s.selectingId);
+  const listRef = useRef<FlashListRef<ChatMessage>>(null);
+  const [scrollStatus, setScrollStatus] = useState<ScrollStatus>({
+    canScroll: false,
+    isAtTop: false,
+    isAtBottom: true,
+  });
+  const scrollStatusRef = useRef(scrollStatus);
+  const viewportHeightRef = useRef(0);
+  const contentHeightRef = useRef(0);
+  const [visibleMessageWindow, setVisibleMessageWindow] =
+    useState<VisibleMessageWindow>({
+      first: null,
+      last: null,
+    });
+  const visibleMessageWindowRef = useRef(visibleMessageWindow);
+
+  const setScrollStatusIfChanged = useCallback((next: ScrollStatus) => {
+    const current = scrollStatusRef.current;
+    if (
+      current.canScroll === next.canScroll &&
+      current.isAtTop === next.isAtTop &&
+      current.isAtBottom === next.isAtBottom
+    ) {
+      return;
+    }
+    scrollStatusRef.current = next;
+    setScrollStatus(next);
+  }, []);
+
+  const setVisibleMessageWindowIfChanged = useCallback(
+    (next: VisibleMessageWindow) => {
+      const current = visibleMessageWindowRef.current;
+      if (current.first === next.first && current.last === next.last) {
+        return;
+      }
+      visibleMessageWindowRef.current = next;
+      setVisibleMessageWindow(next);
+    },
+    [],
+  );
+
+  const syncScrollability = useCallback(() => {
+    const canScroll =
+      contentHeightRef.current >
+      viewportHeightRef.current + SCROLLABLE_CONTENT_SLACK_PX;
+    const current = scrollStatusRef.current;
+    setScrollStatusIfChanged({
+      canScroll,
+      isAtTop: canScroll ? current.isAtTop : true,
+      isAtBottom: canScroll ? current.isAtBottom : true,
+    });
+  }, [setScrollStatusIfChanged]);
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      contentHeightRef.current = contentSize.height;
+      viewportHeightRef.current = layoutMeasurement.height;
+      const distFromBottom =
+        contentSize.height - (contentOffset.y + layoutMeasurement.height);
+      const nextCanScroll =
+        contentSize.height >
+        layoutMeasurement.height + SCROLLABLE_CONTENT_SLACK_PX;
+      const nextAtTop = contentOffset.y <= AT_TOP_SLACK_PX;
+      const nextAtBottom =
+        !nextCanScroll || distFromBottom < AT_BOTTOM_SLACK_PX;
+      setScrollStatusIfChanged({
+        canScroll: nextCanScroll,
+        isAtTop: nextAtTop,
+        isAtBottom: nextAtBottom,
+      });
+    },
+    [setScrollStatusIfChanged],
+  );
+
+  const jumpToTop = useCallback(() => {
+    useChatSelectStore.getState().clear();
+    Keyboard.dismiss();
+    listRef.current?.scrollToOffset({ animated: true, offset: 0 });
+  }, []);
+
+  const jumpToBottom = useCallback(() => {
+    useChatSelectStore.getState().clear();
+    Keyboard.dismiss();
+    listRef.current?.scrollToEnd({ animated: true });
+  }, []);
+
+  const previousMessageIndex = useMemo(() => {
+    if (messages.length === 0) return null;
+    const anchor = visibleMessageWindow.first ?? 0;
+    return anchor > 0 ? anchor - 1 : null;
+  }, [messages.length, visibleMessageWindow.first]);
+
+  const nextMessageIndex = useMemo(() => {
+    if (messages.length === 0) return null;
+    const anchor = visibleMessageWindow.last ?? messages.length - 1;
+    return anchor < messages.length - 1 ? anchor + 1 : null;
+  }, [messages.length, visibleMessageWindow.last]);
+
+  const jumpToMessageIndex = useCallback((index: number | null) => {
+    if (index == null) return;
+    useChatSelectStore.getState().clear();
+    Keyboard.dismiss();
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToIndex({
+        animated: true,
+        index,
+        viewPosition: 0.08,
+      });
+    });
+  }, []);
+
+  const viewabilityConfig = useMemo(
+    () => ({ itemVisiblePercentThreshold: 1 }),
+    [],
+  );
+  const handleViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      const visibleMessageIndices = viewableItems
+        .map((item) => item.index)
+        .filter((index): index is number => index != null)
+        .sort((a, b) => a - b);
+      setVisibleMessageWindowIfChanged({
+        first: visibleMessageIndices[0] ?? null,
+        last:
+          visibleMessageIndices.length > 0
+            ? visibleMessageIndices[visibleMessageIndices.length - 1]
+            : null,
+      });
+    },
+    [setVisibleMessageWindowIfChanged],
+  );
+  const handlerRef = useRef(handleViewableItemsChanged);
+  useEffect(() => {
+    handlerRef.current = handleViewableItemsChanged;
+  }, [handleViewableItemsChanged]);
+  const stableViewabilityHandler = useCallback(
+    (info: { viewableItems: ViewToken[] }) => handlerRef.current(info),
+    [],
+  );
+  const viewabilityCallbackPairs = useRef([
+    {
+      viewabilityConfig,
+      onViewableItemsChanged: stableViewabilityHandler,
+    },
+  ]);
 
   if (loading && messages.length === 0) {
     return (
@@ -165,71 +336,96 @@ export function ChatMessageList({
       disabled={!selectingId}
       style={{ flex: 1 }}
     >
-    {/* `key` on first message id forces remount on session switch so
-        `startRenderingFromBottom` re-fires and we land at the new
-        session's bottom (instead of inheriting the previous session's
-        scroll position). Cheap because sessions are switched, not
-        re-rendered every keystroke. */}
-    <FlashList
-      key={messages[0]?.id ?? "empty"}
-      data={messages}
-      keyExtractor={(m) => m.id}
-      renderItem={({ item, index }) => (
-        <MessageRow
-          message={item}
-          isLatest={index === messages.length - 1}
-          isLatestUser={index === findLatestUserIndex(messages)}
-          onRegenerateLast={onRegenerateLast}
-          onResendLast={onResendLast}
-          onWithdrawLast={onWithdrawLast}
-          onEditMessage={onEditMessage}
+      {/* `key` on first message id forces remount on session switch so
+          `startRenderingFromBottom` re-fires and we land at the new
+          session's bottom (instead of inheriting the previous session's
+          scroll position). Cheap because sessions are switched, not
+          re-rendered every keystroke. */}
+      <FlashList
+        ref={listRef}
+        key={messages[0]?.id ?? "empty"}
+        data={messages}
+        keyExtractor={(m) => m.id}
+        renderItem={({ item, index }) => (
+          <MessageRow
+            message={item}
+            isLatest={index === messages.length - 1}
+            isLatestUser={index === findLatestUserIndex(messages)}
+            onRegenerateLast={onRegenerateLast}
+            onResendLast={onResendLast}
+            onWithdrawLast={onWithdrawLast}
+            onEditMessage={onEditMessage}
+          />
+        )}
+        ItemSeparatorComponent={MessageSeparator}
+        ListFooterComponent={
+          showLiveSection ? (
+            <View style={{ paddingTop: 12 }} className="gap-2">
+              {showLiveTimeline ? (
+                <ChatTimeline items={liveTaskMessages ?? []} isStreaming />
+              ) : null}
+              <StatusPill
+                pendingTask={pendingTask}
+                taskMessages={liveTaskMessages}
+                availability={availability}
+              />
+            </View>
+          ) : null
+        }
+        // Outer padding mirrors web's max-w-4xl px-5 py-4 container at
+        // mobile scale. Vertical gap between bubbles handled by
+        // ItemSeparatorComponent (FlashList doesn't honour `gap-*` on
+        // contentContainer the way FlatList's gap-via-NativeWind did).
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: 16,
+        }}
+        // Chat behavior: initial render at the bottom; when new messages
+        // arrive AND the user is within 20% of the bottom, auto-scroll.
+        // Reading history (further than 20% up) is preserved. This single
+        // prop replaces the entire FlatList-era guard ref dance.
+        maintainVisibleContentPosition={{
+          autoscrollToBottomThreshold: 0.2,
+          startRenderingFromBottom: true,
+        }}
+        onScroll={handleScroll}
+        // Any user-initiated scroll exits message text-selection mode —
+        // matches iMessage's behavior where scrolling implicitly commits /
+        // dismisses the selection caret. Hooks both drag-start and the
+        // momentum kick after a flick so a fast scroll can't escape.
+        onScrollBeginDrag={() => useChatSelectStore.getState().clear()}
+        onMomentumScrollBegin={() => useChatSelectStore.getState().clear()}
+        viewabilityConfigCallbackPairs={viewabilityCallbackPairs.current}
+        onLayout={(event) => {
+          viewportHeightRef.current = event.nativeEvent.layout.height;
+          syncScrollability();
+        }}
+        onContentSizeChange={(_, height) => {
+          contentHeightRef.current = height;
+          syncScrollability();
+        }}
+        // iMessage-style keyboard dismissal: dragging the list pulls the
+        // keyboard down with the finger (iOS); tapping empty space between
+        // bubbles dismisses it. `handled` keeps Pressables inside bubbles
+        // (long-press action sheet etc.) firing normally.
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+      />
+      {scrollStatus.canScroll ? (
+        <FloatingListNavigator
+          canJumpUp={previousMessageIndex != null}
+          canJumpDown={nextMessageIndex != null}
+          isAtTop={scrollStatus.isAtTop}
+          isAtBottom={scrollStatus.isAtBottom}
+          previousLabel="Jump to previous message"
+          nextLabel="Jump to next message"
+          onJumpToTop={jumpToTop}
+          onJumpToPrevious={() => jumpToMessageIndex(previousMessageIndex)}
+          onJumpToNext={() => jumpToMessageIndex(nextMessageIndex)}
+          onJumpToBottom={jumpToBottom}
         />
-      )}
-      ItemSeparatorComponent={MessageSeparator}
-      ListFooterComponent={
-        showLiveSection ? (
-          <View style={{ paddingTop: 12 }} className="gap-2">
-            {showLiveTimeline ? (
-              <ChatTimeline items={liveTaskMessages ?? []} isStreaming />
-            ) : null}
-            <StatusPill
-              pendingTask={pendingTask}
-              taskMessages={liveTaskMessages}
-              availability={availability}
-            />
-          </View>
-        ) : null
-      }
-      // Outer padding mirrors web's max-w-4xl px-5 py-4 container at
-      // mobile scale. Vertical gap between bubbles handled by
-      // ItemSeparatorComponent (FlashList doesn't honour `gap-*` on
-      // contentContainer the way FlatList's gap-via-NativeWind did).
-      contentContainerStyle={{
-        paddingHorizontal: 16,
-        paddingTop: 12,
-        paddingBottom: 16,
-      }}
-      // Chat behavior: initial render at the bottom; when new messages
-      // arrive AND the user is within 20% of the bottom, auto-scroll.
-      // Reading history (further than 20% up) is preserved. This single
-      // prop replaces the entire FlatList-era guard ref dance.
-      maintainVisibleContentPosition={{
-        autoscrollToBottomThreshold: 0.2,
-        startRenderingFromBottom: true,
-      }}
-      // Any user-initiated scroll exits message text-selection mode —
-      // matches iMessage's behavior where scrolling implicitly commits /
-      // dismisses the selection caret. Hooks both drag-start and the
-      // momentum kick after a flick so a fast scroll can't escape.
-      onScrollBeginDrag={() => useChatSelectStore.getState().clear()}
-      onMomentumScrollBegin={() => useChatSelectStore.getState().clear()}
-      // iMessage-style keyboard dismissal: dragging the list pulls the
-      // keyboard down with the finger (iOS); tapping empty space between
-      // bubbles dismisses it. `handled` keeps Pressables inside bubbles
-      // (long-press action sheet etc.) firing normally.
-      keyboardDismissMode="interactive"
-      keyboardShouldPersistTaps="handled"
-    />
+      ) : null}
     </Pressable>
   );
 }

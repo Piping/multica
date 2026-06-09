@@ -1,11 +1,11 @@
 import { useMemo } from "react";
-import { Platform, ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import type { TimelineEntry } from "@multica/core/types";
 import { Text } from "@/components/ui/text";
 import { ActivityRow } from "@/components/issue/activity-row";
+import { WorkspaceSheetListSurface } from "@/components/ui/workspace-sheet-list-surface";
 import { issueTimelineOptions } from "@/data/queries/issues";
 import { useWorkspaceStore } from "@/data/workspace-store";
 import { coalesceTimeline } from "@/lib/timeline-coalesce";
@@ -21,36 +21,25 @@ export default function IssueHistoryRoute() {
   );
 
   return (
-    <SafeAreaView
-      className="flex-1 bg-background"
-      edges={Platform.OS === "android" ? ["top"] : []}
+    <WorkspaceSheetListSurface
+      title="History"
+      subtitle="System updates and issue property changes."
+      contentContainerClassName="px-4 pb-4"
     >
-      <View className="px-4 pt-4 pb-3">
-        <Text className="text-base font-semibold text-foreground">
-          History
-        </Text>
-        <Text className="mt-1 text-sm text-muted-foreground">
-          System updates and issue property changes.
-        </Text>
-      </View>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View className="px-4 pb-4">
-          {activityEntries.length > 0 ? (
-            <View className="gap-3">
-              {activityEntries.map((entry) => (
-                <ActivityCard key={entry.id} entry={entry} />
-              ))}
-            </View>
-          ) : (
-            <View className="rounded-2xl border border-border bg-surface-1 px-4 py-5">
-              <Text className="text-sm text-muted-foreground">
-                No system activity yet.
-              </Text>
-            </View>
-          )}
+      {activityEntries.length > 0 ? (
+        <View className="gap-3">
+          {activityEntries.map((entry) => (
+            <ActivityCard key={entry.id} entry={entry} />
+          ))}
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      ) : (
+        <View className="rounded-2xl border border-border bg-surface-1 px-4 py-5">
+          <Text className="text-sm text-muted-foreground">
+            No system activity yet.
+          </Text>
+        </View>
+      )}
+    </WorkspaceSheetListSurface>
   );
 }
 

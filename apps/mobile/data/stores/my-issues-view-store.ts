@@ -6,8 +6,8 @@
  * rule" in apps/mobile/CLAUDE.md). Mobile cannot import core's runtime, so
  * this is re-implemented locally.
  *
- * Empty filter array = "show all" (matches web's predicate semantics in
- * packages/views/issues/utils/filter.ts).
+ * Mobile seeds statusFilters with the "active work" default set so completed
+ * issues stay hidden until the user explicitly opts in from the filter sheet.
  *
  * No persist middleware in v1 — matches the existing mobile pattern
  * (auth-store / workspace-store use SecureStore manually for the few values
@@ -17,6 +17,7 @@
 import { create } from "zustand";
 import type { IssuePriority, IssueStatus } from "@multica/core/types";
 import type { MyIssuesScope } from "@/data/queries/issue-keys";
+import { DEFAULT_MOBILE_ISSUE_STATUS_FILTERS } from "@/lib/issue-filter-defaults";
 
 interface MyIssuesViewState {
   scope: MyIssuesScope;
@@ -30,7 +31,7 @@ interface MyIssuesViewState {
 
 export const useMyIssuesViewStore = create<MyIssuesViewState>((set) => ({
   scope: "all",
-  statusFilters: [],
+  statusFilters: DEFAULT_MOBILE_ISSUE_STATUS_FILTERS,
   priorityFilters: [],
   setScope: (scope) => set({ scope }),
   toggleStatusFilter: (status) =>
@@ -45,5 +46,9 @@ export const useMyIssuesViewStore = create<MyIssuesViewState>((set) => ({
         ? state.priorityFilters.filter((p) => p !== priority)
         : [...state.priorityFilters, priority],
     })),
-  clearFilters: () => set({ statusFilters: [], priorityFilters: [] }),
+  clearFilters: () =>
+    set({
+      statusFilters: DEFAULT_MOBILE_ISSUE_STATUS_FILTERS,
+      priorityFilters: [],
+    }),
 }));
