@@ -72,6 +72,7 @@ import {
 import { useChatLastSessionStore } from "@/data/stores/chat-last-session-store";
 import { useChatSessionPickerStore } from "@/data/stores/chat-session-picker-store";
 import { useChatSessionRealtime } from "@/data/realtime/use-chat-session-realtime";
+import { useChatSessionRecovery } from "@/data/realtime/use-chat-session-recovery";
 import { canAssignAgent } from "@/lib/can-assign-agent";
 import { useWorkspaceAgentAvailability } from "@/lib/workspace-agent-availability";
 import { useAgentPresence } from "@/lib/use-agent-presence";
@@ -224,11 +225,18 @@ export default function ChatTab() {
   const setDraft = useChatDraftsStore((s) => s.setDraft);
   const clearDraft = useChatDraftsStore((s) => s.clearDraft);
   const promoteNewDraft = useChatDraftsStore((s) => s.promoteNewDraft);
+  const isFocused = useIsFocused();
 
   // ── Realtime ───────────────────────────────────────────────────────────
-  useChatSessionRealtime(activeSessionId, () => {
+  const handleSessionDeleted = useCallback(() => {
     setActiveSessionId(null);
-  });
+  }, []);
+  useChatSessionRealtime(activeSessionId, handleSessionDeleted);
+  useChatSessionRecovery(
+    activeSessionId,
+    pendingTask?.task_id,
+    isFocused && !!pendingTask?.task_id,
+  );
 
   // Exit text-selection mode whenever the chat tab loses focus. Expo
   // Router bottom tabs stay mounted across tab switches, so a plain
@@ -239,7 +247,6 @@ export default function ChatTab() {
   );
 
   // ── Auto markRead while viewing a session with unread state ──────────
-  const isFocused = useIsFocused();
   const markRead = useMarkChatSessionRead();
   useEffect(() => {
     if (!isFocused) return;

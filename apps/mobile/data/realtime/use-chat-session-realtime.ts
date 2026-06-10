@@ -29,7 +29,9 @@ import {
   appendTaskMessage,
   applyChatDoneToCache,
   clearPendingTask,
+  markPendingTaskWaitingLocalDirectory,
   promotePendingTaskToRunning,
+  reaffirmPendingTaskRunning,
   seedPendingTaskFromQueued,
 } from "./chat-ws-updaters";
 
@@ -71,6 +73,14 @@ export function useChatSessionRealtime(
         ws.on("task:dispatch", (payload) => {
           if (!isMine(payload)) return;
           promotePendingTaskToRunning(qc, payload);
+        }),
+        ws.on("task:running", (payload) => {
+          if (!isMine(payload)) return;
+          reaffirmPendingTaskRunning(qc, payload);
+        }),
+        ws.on("task:waiting_local_directory", (payload) => {
+          if (!isMine(payload)) return;
+          markPendingTaskWaitingLocalDirectory(qc, payload);
         }),
         ws.on("task:cancelled", (payload) => {
           if (!isMine(payload)) return;

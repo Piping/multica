@@ -29,6 +29,8 @@ import type {
   TaskMessagePayload,
   TaskQueuedPayload,
   TaskDispatchPayload,
+  TaskRunningPayload,
+  TaskWaitingLocalDirectoryPayload,
 } from "@multica/core/types";
 import { chatKeys } from "@/data/queries/chat";
 
@@ -165,6 +167,34 @@ export function promotePendingTaskToRunning(
       // dispatch event for a finished task shouldn't reanimate the pill.
       if (!old || old.task_id !== payload.task_id) return old;
       return { ...old, status: "running" };
+    },
+  );
+}
+
+export function reaffirmPendingTaskRunning(
+  qc: QueryClient,
+  payload: TaskRunningPayload,
+) {
+  if (!payload.chat_session_id) return;
+  qc.setQueryData<ChatPendingTask>(
+    chatKeys.pendingTask(payload.chat_session_id),
+    (old) => {
+      if (!old || old.task_id !== payload.task_id) return old;
+      return { ...old, status: "running" };
+    },
+  );
+}
+
+export function markPendingTaskWaitingLocalDirectory(
+  qc: QueryClient,
+  payload: TaskWaitingLocalDirectoryPayload,
+) {
+  if (!payload.chat_session_id) return;
+  qc.setQueryData<ChatPendingTask>(
+    chatKeys.pendingTask(payload.chat_session_id),
+    (old) => {
+      if (!old || old.task_id !== payload.task_id) return old;
+      return { ...old, status: "waiting_local_directory" };
     },
   );
 }

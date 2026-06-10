@@ -88,6 +88,9 @@ function pickStage(
   ) {
     return { label: "Reconnecting" };
   }
+  if (status === "waiting_local_directory") {
+    return { label: "Waiting for local directory", static: true };
+  }
   if (status === "queued") return { label: "Queued" };
   if (status === "dispatched") return { label: "Starting up" };
 
