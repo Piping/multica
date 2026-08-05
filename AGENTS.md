@@ -56,6 +56,7 @@ make check            # Full verification pipeline
 
 ### Deployment
 
+- After completing deployable changes, deploy the affected production service and verify its public endpoint before reporting completion, unless the user explicitly asks not to deploy or the required credentials/environment are unavailable.
 - Build the Vite production bundle locally or in CI. Deployment hosts only receive and serve the built `apps/web/dist` artifact; never run frontend compilation on a deployment host.
 - For the `ten` bare-metal release/update procedure, use `docs/bare-metal-remote-deployment.zh-CN.md`.
 
