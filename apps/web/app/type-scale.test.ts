@@ -43,7 +43,14 @@ const SCALE = [
 ] as const;
 
 const scanRoots = ["packages/ui", "packages/views", "apps/web", "apps/desktop/src"];
-const skipDirs = new Set(["node_modules", ".next", "dist", "out", "build", ".turbo"]);
+const skipDirs = new Set([
+  "node_modules",
+  "dist",
+  "out",
+  "build",
+  ".next",
+  ".turbo",
+]);
 const sourceExtensions = [".ts", ".tsx", ".css"];
 
 /**

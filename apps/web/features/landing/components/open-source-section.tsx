@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/platform/link";
 import { useLocale } from "../i18n";
 import { GitHubMark, githubUrl } from "./shared";
 

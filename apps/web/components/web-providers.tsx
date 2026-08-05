@@ -28,20 +28,19 @@ function hasLegacyToken(): boolean {
   }
 }
 
-// Derive WebSocket URL from the page origin so self-hosted / LAN deployments
-// work without an explicit runtime wsUrl. The Next.js runtime proxy handles
-// /ws -> backend when the deployment keeps WebSockets same-origin.
+// Derive WebSocket URL from the page origin so Cloudflare and self-hosted
+// deployments use the same-origin /ws proxy without browser configuration.
 function deriveWsUrl(): string | undefined {
   if (typeof window === "undefined") return undefined;
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${window.location.host}/ws`;
 }
 
-// Build-time version preferred (CI sets NEXT_PUBLIC_APP_VERSION to a git tag
+// Build-time version preferred (CI sets VITE_APP_VERSION to a git tag
 // or sha so different deploys are distinguishable in server logs); fall back
 // to the package.json version so local dev still reports something useful.
 const WEB_VERSION =
-  process.env.NEXT_PUBLIC_APP_VERSION || packageJson.version || "dev";
+  import.meta.env.VITE_APP_VERSION || packageJson.version || "dev";
 
 export function WebProviders({
   children,

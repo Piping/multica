@@ -1,7 +1,9 @@
-"use client";
-
-import { Suspense, useEffect } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useMemo } from "react";
+import {
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import {
   NavigationProvider,
   type NavigationAdapter,
@@ -15,16 +17,16 @@ import { canGoBackInApp } from "./in-app-history";
  * equivalent is a router push in place. Without this the event has no listener
  * and such links do nothing at all.
  */
-function useInternalLinkHandler(router: ReturnType<typeof useRouter>) {
+function useInternalLinkHandler(push: (path: string) => void) {
   useEffect(() => {
     const handler = (e: Event) => {
       const path = (e as CustomEvent<{ path?: string }>).detail?.path;
       if (!path) return;
-      router.push(path);
+      push(path);
     };
     window.addEventListener("multica:navigate", handler);
     return () => window.removeEventListener("multica:navigate", handler);
-  }, [router]);
+  }, [push]);
 }
 
 function NavigationProviderInner({
@@ -32,26 +34,30 @@ function NavigationProviderInner({
 }: {
   children: React.ReactNode;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  useInternalLinkHandler(router);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
+  const push = useMemo(
+    () => (path: string) => navigate(path),
+    [navigate],
+  );
+  const replace = useMemo(
+    () => (path: string) => navigate(path, { replace: true }),
+    [navigate],
+  );
+  const back = useMemo(() => () => navigate(-1), [navigate]);
+  useInternalLinkHandler(push);
 
   const adapter: NavigationAdapter = {
-    push: router.push,
-    replace: router.replace,
-    back: router.back,
+    push,
+    replace,
+    back,
     canGoBack: canGoBackInApp,
     pathname,
-    searchParams: new URLSearchParams(searchParams.toString()),
+    searchParams: new URLSearchParams(searchParams),
     getShareableUrl: (path: string) =>
       typeof window === "undefined" ? path : window.location.origin + path,
-    // router.prefetch is a no-op in dev mode by Next.js design; in production
-    // it warms the RSC payload + route chunk so the next push() commits with
-    // no network round-trip. Safe to call repeatedly — Next dedupes internally.
-    prefetch: (path: string) => {
-      router.prefetch(path);
-    },
+    prefetch: () => undefined,
   };
 
   return <NavigationProvider value={adapter}>{children}</NavigationProvider>;
@@ -62,9 +68,5 @@ export function WebNavigationProvider({
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <Suspense>
-      <NavigationProviderInner>{children}</NavigationProviderInner>
-    </Suspense>
-  );
+  return <NavigationProviderInner>{children}</NavigationProviderInner>;
 }

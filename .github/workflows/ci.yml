@@ -83,11 +83,11 @@ jobs:
           fi
 
   # The frontend validation is split across two runners on purpose. Both
-  # `@multica/web:build` (a webpack production build) and `@multica/views:test`
+  # `@multica/web:build` (a Vite production build) and `@multica/views:test`
   # (259 jsdom files) are CPU-saturating, and a standard runner only has
   # 4 vCPUs. Running them in one job made them starve each other: the views
   # suite needs ~104s wall when it owns 4 cores but took ~500s sharing them,
-  # and the identical webpack compile went from ~26s to ~342s. Splitting buys
+  # and the identical frontend compile went from ~26s to ~342s. Splitting buys
   # a second 4-vCPU box rather than reducing the work; total runner-minutes go
   # up slightly, wall-clock feedback time goes down.
   #

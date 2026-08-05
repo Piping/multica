@@ -20,8 +20,8 @@ FRONTEND_PORT ?= 3000
 FRONTEND_ORIGIN ?= http://localhost:$(FRONTEND_PORT)
 MULTICA_APP_URL ?= $(FRONTEND_ORIGIN)
 DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
-NEXT_PUBLIC_API_URL ?= http://localhost:$(PORT)
-NEXT_PUBLIC_WS_URL ?= ws://localhost:$(PORT)/ws
+VITE_API_URL ?=
+VITE_WS_URL ?=
 GOOGLE_REDIRECT_URI ?= $(FRONTEND_ORIGIN)/auth/callback
 MULTICA_SERVER_URL ?= ws://localhost:$(PORT)/ws
 LOCAL_UPLOAD_BASE_URL ?= http://localhost:$(PORT)
@@ -302,7 +302,7 @@ sqlc: ## Regenerate sqlc code
 
 clean: ## Remove build caches, generated binaries, and temp files
 	rm -rf server/bin server/tmp
-	rm -rf apps/*/.next apps/*/.source apps/*/.expo
+	rm -rf apps/*/.source apps/*/.expo apps/*/dist apps/*/out
 	rm -rf apps/*/out apps/*/dist apps/*/dist-electron packages/*/dist
 	rm -rf .turbo apps/*/.turbo packages/*/.turbo
 	rm -rf apps/*/*.tsbuildinfo packages/*/*.tsbuildinfo

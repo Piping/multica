@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/platform/link";
 import { LandingHeader } from "./landing-header";
 import { LandingFooter } from "./landing-footer";
 import { GitHubMark, githubUrl } from "./shared";

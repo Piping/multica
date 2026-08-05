@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/platform/router-compat";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
 import { workspaceListOptions } from "@multica/core/workspace";
@@ -11,12 +11,9 @@ import { isOfficialMarketingHost } from "@/lib/public-host";
 /**
  * Client-side fallback redirect for authenticated visitors on the landing page.
  *
- * The primary path for logged-in users hitting an app host's `/` is a
- * server-side redirect in the Next.js proxy/middleware, driven by the
- * `last_workspace_slug` cookie. That cookie is set by the workspace layout on
- * every visit. But on *first login* — before the user has ever visited a
- * workspace — the cookie is absent, so the proxy falls through to the landing
- * page. This component covers that gap on app/self-host origins.
+ * The SPA resolves authenticated root visits after the workspace list is
+ * available. The last workspace cookie remains useful to other clients, but
+ * browser navigation no longer relies on server-render middleware.
  *
  * On the official marketing origins, `/` must remain public even for logged-in
  * users. Explicit workspace routes still open the app.

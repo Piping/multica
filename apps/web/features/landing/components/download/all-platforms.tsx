@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/platform/link";
 import { useLocale } from "../../i18n";
 import type { DownloadAssets } from "../../utils/parse-release-assets";
 import { AppleIcon, LinuxIcon, WindowsIcon } from "./os-icons";

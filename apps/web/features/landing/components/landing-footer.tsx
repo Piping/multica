@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/platform/link";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
 import { cn } from "@multica/ui/lib/utils";
 import { useAuthStore } from "@multica/core/auth";

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/platform/link";
 import { useAuthStore } from "@multica/core/auth";
 import { docsHrefForLocale, useLocale } from "../i18n";
 import { useDashboardCtaHref } from "../utils/use-dashboard-cta";

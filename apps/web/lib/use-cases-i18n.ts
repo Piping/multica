@@ -1,8 +1,5 @@
 import type { SupportedLocale } from "@multica/core/i18n";
 export { docsHrefForLocale } from "@/lib/docs-href";
-import { getRequestLocale } from "@/lib/request-locale";
-
-export const getUseCaseLocale = getRequestLocale;
 
 type UseCaseText = {
   indexTitle: string;

@@ -156,11 +156,8 @@ If the frontend and backend are served from different hostnames, `COOKIE_DOMAIN`
 > `docker compose port`, so the health check and the printed URL always match
 > what Compose actually published.
 
-The web development server is one intentional exception to the generic `PORT`
-fallback: Next uses `PORT` for its own frontend listener before it evaluates the
-rewrite configuration. Its backend fallback therefore accepts
-`BACKEND_PORT` → `API_PORT` → `SERVER_PORT` → `8080`, while an explicit
-`REMOTE_API_URL` or `NEXT_PUBLIC_API_URL` still takes priority.
+The Vite development server accepts `REMOTE_API_URL` as its proxy target. When
+unset, it resolves `BACKEND_PORT` → `API_PORT` → `SERVER_PORT` → `8080`.
 
 ### CLI / Daemon
 
@@ -307,11 +304,14 @@ For the frontend:
 
 ```bash
 pnpm install
-pnpm build
+pnpm -C apps/web build
 
-# Start the frontend (production mode)
-cd apps/web
-REMOTE_API_URL=http://localhost:8080 pnpm start
+# Serve apps/web/dist with your static server. The production Docker image
+# uses nginx and reads REMOTE_API_URL when the container starts.
+docker build -f Dockerfile.web -t multica-web:local .
+docker run --rm -p 3000:3000 \
+  -e REMOTE_API_URL=http://host.docker.internal:8080 \
+  multica-web:local
 ```
 
 ## Reverse Proxy
@@ -419,10 +419,8 @@ FRONTEND_ORIGIN=https://app.example.com
 CORS_ALLOWED_ORIGINS=https://app.example.com
 COOKIE_DOMAIN=.example.com           # narrowest parent covering both hosts — read the scope warning below
 
-# Frontend (only if you are building the web image from source via docker-compose.selfhost.build.yml)
+# Static frontend proxy
 REMOTE_API_URL=https://api.example.com
-NEXT_PUBLIC_API_URL=https://api.example.com
-NEXT_PUBLIC_WS_URL=wss://api.example.com/ws
 ```
 
 > **`COOKIE_DOMAIN` is required in this setup — omitting it breaks every write.** The web app authenticates with an HttpOnly `multica_auth` cookie plus a JS-readable `multica_csrf` cookie, and sends the CSRF value as an `X-CSRF-Token` header on every non-GET request. Both cookies are host-only unless `COOKIE_DOMAIN` is set, so a frontend on `app.example.com` cannot read a cookie issued by `api.example.com`. The header is then never sent and the backend rejects the request with `403 {"error":"CSRF validation failed"}` — while GET requests keep working, so the app renders but nothing can be created or edited.
@@ -440,7 +438,9 @@ If either condition fails, use the same-origin layout below, which keeps the ses
 
 ### Same Origin (Recommended)
 
-A separate API domain is not required. Leave `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` at their defaults and the browser calls `/api` and `/ws` on the page's own origin, so no cross-host cookie problem can arise in the first place:
+A separate browser-visible API domain is not required. The browser always calls
+`/api` and `/ws` on the page's own origin, so no cross-host cookie problem can
+arise:
 
 ```bash
 # Backend
@@ -448,27 +448,13 @@ FRONTEND_ORIGIN=https://app.example.com
 CORS_ALLOWED_ORIGINS=https://app.example.com
 COOKIE_DOMAIN=                       # empty: cookies are host-only on app.example.com, which is correct here
 
-# Frontend
-NEXT_PUBLIC_API_URL=                 # empty: the client uses relative /api paths on the page origin
-NEXT_PUBLIC_WS_URL=                  # empty
-REMOTE_API_URL=http://backend:8080   # target the Next.js rewrites proxy /api, /auth and /uploads to
+# Static frontend proxy
+REMOTE_API_URL=http://backend:8080
 ```
 
-Serve everything from the single `app.example.com` vhost. HTTP works out of the box, because Next.js rewrites forward `/api`, `/auth` and `/uploads` to `REMOTE_API_URL`. WebSockets do **not** go through those rewrites, so add a `/ws` block to the frontend vhost that reaches the backend directly:
-
-```nginx
-# Add to the app.example.com server block above
-location /ws {
-    proxy_pass http://localhost:8080;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_read_timeout 86400;
-}
-```
-
-See [WebSocket for LAN / Non-localhost Access](#websocket-for-lan--non-localhost-access) for why the rewrites cannot carry the `Upgrade` handshake.
+Serve everything from the single `app.example.com` vhost. The frontend nginx
+image forwards `/api`, backend `/auth`, `/uploads`, and the `/ws` upgrade to
+`REMOTE_API_URL`; all other paths use SPA fallback.
 
 This keeps cookies, CORS, and the WebSocket origin check on a single origin. It is both the configuration least likely to break and the safer one: the session cookie stays host-only, so no sibling subdomain can ever receive it. An `api.example.com` vhost can still be kept for CLI and daemon use: those clients authenticate with a `mul_` personal access token over `Authorization: Bearer`, which never goes through the cookie or CSRF path.
 
@@ -490,25 +476,14 @@ docker compose -f docker-compose.selfhost.yml up -d
 
 ### WebSocket for LAN / Non-localhost Access
 
-HTTP requests (issues, comments, uploads) work on LAN out of the box — Next.js rewrites proxy `/api`, `/auth`, and `/uploads` to the backend. **WebSockets do not**: Next.js rewrites only forward HTTP requests, not the `Upgrade` handshake a WebSocket needs. If you open the app on `http://<lan-ip>:3000`, real-time features (chat streaming, live issue updates, notifications) will fail to connect until you do one of the following:
+HTTP and WebSocket requests work on LAN through the frontend nginx container:
+it proxies `/api`, backend `/auth`, `/uploads`, and `/ws` to the backend. You
+still need to allow the browser origin on the backend:
 
-1. **Put a reverse proxy in front of the stack (recommended).** Nginx or Caddy terminates the WebSocket upgrade and forwards it to the backend on port 8080. See the [Reverse Proxy](#reverse-proxy) section above — the Nginx example already includes a `location /ws { ... }` block with the correct `Upgrade` / `Connection` headers. Once a proxy is in place the browser connects directly through it, so no frontend rebuild is needed.
-
-2. **Bake a WebSocket URL into the web image.** If you are not running a reverse proxy, rebuild the web image with `NEXT_PUBLIC_WS_URL` pointing straight at the backend (port 8080 must be reachable from the browser):
-
-   ```bash
-   # In .env
-   NEXT_PUBLIC_WS_URL=ws://<lan-ip>:8080/ws
-
-   # Rebuild the web image so the build-time value is baked in
-   docker compose -f docker-compose.selfhost.yml -f docker-compose.selfhost.build.yml up -d --build
-   ```
-
-   `NEXT_PUBLIC_WS_URL` is a build-time variable (see `Dockerfile.web`), so setting it only in `environment:` on the pre-built image has no effect — you must use the `selfhost.build.yml` override that rebuilds the image.
-
-**Also required: allowlist the browser origin.** The two options above fix the WebSocket *upgrade proxying*, but a second, independent setting gates the connection: the backend validates the WebSocket `Origin` header against an allowlist that defaults to `localhost` only. When you open Multica from any other origin — a LAN IP **or a public domain behind a reverse proxy** — set `CORS_ALLOWED_ORIGINS` (or `FRONTEND_ORIGIN`) on the backend to that exact origin and restart, exactly as shown under [LAN / Non-localhost Access](#lan--non-localhost-access) above. Otherwise the upgrade is refused with `403`: the backend logs `websocket: request origin not allowed by Upgrader.CheckOrigin` and the browser console loops `disconnected, reconnecting in 3s`, while HTTP requests (and manual page refreshes) keep working because they are same-origin to the page. The single value covers both HTTP CORS and the WebSocket origin check.
-
-> **Note:** If you need to hard-code a different public API / WebSocket endpoint into the web image for any other reason, use the same source-build override: `docker compose -f docker-compose.selfhost.yml -f docker-compose.selfhost.build.yml up -d --build`.
+The backend validates the WebSocket `Origin` header against an allowlist that
+defaults to localhost. For a LAN IP or public domain, set
+`CORS_ALLOWED_ORIGINS` (or `FRONTEND_ORIGIN`) to that exact origin and restart.
+Otherwise the upgrade is refused with `403`.
 
 ## Health Check
 

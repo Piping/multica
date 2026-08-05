@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "multica-web",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-05",
+  "account_id": "9dc89d9b00f5ad813baf69c29b85a36b",
+  "routes": [
+    {
+      "pattern": "multica.diff.host/*",
+      "zone_name": "diff.host"
+    }
+  ],
+  "vars": {
+    "MULTICA_ORIGIN_URL": "https://multica-origin.diff.host",
+    "STATIC_ORIGIN_URL": "https://multica-web.pages.dev"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

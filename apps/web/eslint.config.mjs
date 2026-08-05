@@ -1,8 +1,10 @@
-import nextConfig from "@multica/eslint-config/next";
+import reactConfig from "@multica/eslint-config/react";
 
 export default [
-  ...nextConfig,
-  { ignores: [".next/", ".source/"] },
+  ...reactConfig,
+  {
+    ignores: [".source/"],
+  },
   {
     files: ["**/*.test.{ts,tsx}", "**/test/**/*.{ts,tsx}"],
     rules: {

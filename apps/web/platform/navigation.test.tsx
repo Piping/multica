@@ -7,20 +7,8 @@
  * answer it with a router push, or those links silently do nothing.
  */
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
-
-const router = vi.hoisted(() => ({
-  push: vi.fn(),
-  replace: vi.fn(),
-  back: vi.fn(),
-  prefetch: vi.fn(),
-}));
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => router,
-  usePathname: () => "/acme/issues",
-  useSearchParams: () => new URLSearchParams(),
-}));
+import { act, render } from "@testing-library/react";
+import { createMemoryRouter, RouterProvider } from "react-router-dom";
 
 import { WebNavigationProvider } from "./navigation";
 import { useNavigation, type NavigationAdapter } from "@multica/views/navigation";
@@ -31,50 +19,65 @@ function navigate(path: string) {
   );
 }
 
-function renderAdapter(): () => NavigationAdapter {
+function renderWithRouter(children: React.ReactNode) {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: (
+          <WebNavigationProvider>{children}</WebNavigationProvider>
+        ),
+      },
+    ],
+    { initialEntries: ["/acme/issues"] },
+  );
+  const result = render(<RouterProvider router={router} />);
+  return { ...result, router };
+}
+
+function renderAdapter(): {
+  adapter: () => NavigationAdapter;
+  router: ReturnType<typeof createMemoryRouter>;
+} {
   let adapter: NavigationAdapter | null = null;
   function Probe() {
     adapter = useNavigation();
     return null;
   }
-  render(
-    <WebNavigationProvider>
-      <Probe />
-    </WebNavigationProvider>,
-  );
-  return () => adapter!;
+  const { router } = renderWithRouter(<Probe />);
+  return { adapter: () => adapter!, router };
 }
 
 beforeEach(() => {
-  router.push.mockReset();
+  vi.restoreAllMocks();
 });
 
 describe("WebNavigationProvider internal link bridge", () => {
   it("pushes the path a content link resolved to", () => {
-    render(<WebNavigationProvider>{null}</WebNavigationProvider>);
+    const { router } = renderWithRouter(null);
 
-    navigate("/acme/issues/MUL-1");
+    act(() => navigate("/acme/issues/MUL-1"));
 
-    expect(router.push).toHaveBeenCalledWith("/acme/issues/MUL-1");
+    expect(router.state.location.pathname).toBe("/acme/issues/MUL-1");
   });
 
   it("ignores an event without a path", () => {
-    render(<WebNavigationProvider>{null}</WebNavigationProvider>);
+    const { router } = renderWithRouter(null);
 
-    window.dispatchEvent(new CustomEvent("multica:navigate", { detail: {} }));
+    act(() => {
+      window.dispatchEvent(new CustomEvent("multica:navigate", { detail: {} }));
+    });
 
-    expect(router.push).not.toHaveBeenCalled();
+    expect(router.state.location.pathname).toBe("/acme/issues");
   });
 
   it("stops listening once unmounted", () => {
-    const { unmount } = render(
-      <WebNavigationProvider>{null}</WebNavigationProvider>,
-    );
+    const { unmount, router } = renderWithRouter(null);
 
     unmount();
-    navigate("/acme/issues/MUL-1");
+    act(() => navigate("/acme/issues/MUL-1"));
 
-    expect(router.push).not.toHaveBeenCalled();
+    expect(router.state.location.pathname).toBe("/acme/issues");
   });
 });
 
@@ -93,12 +96,12 @@ describe("WebNavigationProvider canGoBack", () => {
   it("passes through the Navigation API's answer", () => {
     win.navigation = { canGoBack: true };
 
-    expect(renderAdapter()().canGoBack!()).toBe(true);
+    expect(renderAdapter().adapter().canGoBack!()).toBe(true);
   });
 
   it("reads the answer live rather than freezing it at render", () => {
     win.navigation = { canGoBack: true };
-    const adapter = renderAdapter();
+    const { adapter } = renderAdapter();
 
     win.navigation = { canGoBack: false };
 
@@ -111,15 +114,15 @@ describe("WebNavigationProvider canGoBack", () => {
   // this claim `true`. Calling push must not move this answer at all.
   it("is unmoved by a push that committed no history entry", () => {
     win.navigation = { canGoBack: false };
-    const adapter = renderAdapter();
+    const { adapter, router } = renderAdapter();
 
-    adapter().push("/acme/issues");
+    act(() => adapter().push("/acme/issues"));
 
-    expect(router.push).toHaveBeenCalledWith("/acme/issues");
+    expect(router.state.location.pathname).toBe("/acme/issues");
     expect(adapter().canGoBack!()).toBe(false);
   });
 
   it("reports false where the browser cannot answer, so callers use the fallback", () => {
-    expect(renderAdapter()().canGoBack!()).toBe(false);
+    expect(renderAdapter().adapter().canGoBack!()).toBe(false);
   });
 });

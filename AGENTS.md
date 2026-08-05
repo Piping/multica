@@ -15,7 +15,7 @@ This file provides guidance to AI agents when working with code in this reposito
 Go backend + monorepo frontend (pnpm workspaces + Turborepo) with shared packages.
 
 - `server/` - Go backend (Chi router, sqlc, gorilla/websocket)
-- `apps/web/` - Next.js frontend (App Router)
+- `apps/web/` - Vite React SPA (React Router)
 - `apps/desktop/` - Electron desktop app
 - `apps/mobile/` - Expo / React Native iOS app (read `apps/mobile/CLAUDE.md` first)
 - `apps/docs/` - Fumadocs documentation site
@@ -37,7 +37,7 @@ Go backend + monorepo frontend (pnpm workspaces + Turborepo) with shared package
 - `packages/core/` - zero react-dom, zero localStorage, zero process.env
 - `packages/ui/` - zero `@multica/core` imports
 - `packages/views/` - zero `next/*`, zero `react-router-dom`, use `NavigationAdapter` for routing
-- `apps/web/platform/` - only place for Next.js APIs
+- `apps/web/platform/` - Web browser and routing adapter boundary
 
 ### Database Migrations (hard rules)
 
@@ -53,5 +53,10 @@ pnpm test             # TS unit tests (Vitest)
 make test             # Go tests
 make check            # Full verification pipeline
 ```
+
+### Deployment
+
+- Build the Vite production bundle locally or in CI. Deployment hosts only receive and serve the built `apps/web/dist` artifact; never run frontend compilation on a deployment host.
+- For the `ten` bare-metal release/update procedure, use `docs/bare-metal-remote-deployment.zh-CN.md`.
 
 See CLAUDE.md for the authoritative rules and common commands.

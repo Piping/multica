@@ -7,7 +7,7 @@ Deploy Multica on your own infrastructure in minutes.
 | Component | Description | Technology |
 |-----------|-------------|------------|
 | **Backend** | REST API + WebSocket server | Go (single binary) |
-| **Frontend** | Web application | Next.js 16 |
+| **Frontend** | Static web application | Vite SPA served by nginx |
 | **Database** | Primary data store | PostgreSQL 17 with pgvector |
 
 Each user who runs AI agents locally also installs the **`multica` CLI** and runs the **agent daemon** on their own machine.
@@ -168,13 +168,16 @@ The chart creates the following resources in the target namespace:
 
 - `multica-postgres` — `pgvector/pgvector:pg17` backed by a 10Gi PVC
 - `multica-backend` — Go API/WS server. Backed by a 5Gi `ReadWriteOnce` uploads PVC by default; set `backend.uploads.persistence.enabled=false` when you have configured S3 (`backend.config.s3Bucket`) and don't want the chart to declare the PVC at all.
-- `multica-frontend` — Next.js standalone server
+- `multica-frontend` — nginx serving the prebuilt Vite SPA and same-origin proxy
 - Two `Ingress` resources: one for the web host, one for the backend host
 - `multica-config` ConfigMap (rendered from `values.yaml`)
 
 The `multica-secrets` Secret is **not** managed by the chart — you create it once with `kubectl` so real values never need to land in git.
 
-> **Runtime frontend upstreams:** current `multica-web` images read `REMOTE_API_URL` and `DOCS_URL` when the Next.js server runs, so API/docs upstream changes do not require a web rebuild. The chart defaults `REMOTE_API_URL` to this release's backend Service. `frontend.compatibility.backendAlias` exists only for legacy images that still baked `REMOTE_API_URL=http://backend:8080` at build time.
+> **Runtime frontend upstream:** current `multica-web` images read
+> `REMOTE_API_URL` when nginx starts, so API/WS upstream changes do not require
+> a web rebuild. The chart defaults it to this release's backend Service.
+> Browser requests remain same-origin.
 
 > **Prerequisites:** `kubectl` and `helm` (v3.13+ for `--take-ownership`, or v4+) configured for the target cluster, an Ingress controller (Traefik / NGINX), and a default StorageClass.
 

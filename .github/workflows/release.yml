@@ -89,8 +89,7 @@ jobs:
 
   # Multi-arch images are built natively per platform on dedicated runners
   # (amd64 on ubuntu-latest, arm64 on ubuntu-24.04-arm) and merged into a
-  # manifest list. This avoids QEMU emulation, which was making the Next.js
-  # arm64 build run for 30+ minutes per release.
+  # manifest list. This avoids QEMU emulation for the Go backend build.
   docker-backend-build:
     needs: verify
     strategy:
@@ -259,8 +258,7 @@ jobs:
           cache-from: type=gha,scope=release-web-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=release-web-${{ env.PLATFORM_PAIR }}
           build-args: |
-            REMOTE_API_URL=http://backend:8080
-            NEXT_PUBLIC_APP_VERSION=${{ needs.verify.outputs.tag_name }}
+            VITE_APP_VERSION=${{ needs.verify.outputs.tag_name }}
           outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/multica-web,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest

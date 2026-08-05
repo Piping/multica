@@ -16,7 +16,7 @@ Read it before editing translations in `packages/views/locales/`, naming routes/
 Multica is an AI-native task management platform for small teams, with agents as first-class assignees that can own issues, comment, and change status.
 
 - `server/`: Go backend, Chi router, sqlc, gorilla/websocket.
-- `apps/web/`: Next.js App Router.
+- `apps/web/`: Vite React SPA with React Router, Cloudflare Pages assets, and a same-origin routing Worker.
 - `apps/desktop/`: Electron desktop app.
 - `apps/mobile/`: Expo / React Native iOS app. Read `apps/mobile/CLAUDE.md` before touching it.
 - `apps/docs/`: Fumadocs documentation site.
@@ -53,7 +53,7 @@ These are hard constraints:
 - `packages/core/`: no `react-dom`, `localStorage` (use `StorageAdapter`), `process.env`, or UI libraries.
 - `packages/ui/`: no `@multica/core` imports and no business logic.
 - `packages/views/`: no `next/*`, no `react-router-dom`, no stores. Use `NavigationAdapter`, `useNavigation()`, and `<AppLink>`.
-- `apps/web/platform/`: only place for Next.js navigation/platform APIs.
+- `apps/web/platform/`: browser navigation and Web platform adapter boundary.
 - `apps/desktop/src/renderer/src/platform/`: only place for `react-router-dom` navigation wiring.
 - Every workspace under `apps/` and `packages/` must declare directly imported external packages in its own `package.json`.
 - Shared dependencies use `catalog:` from `pnpm-workspace.yaml`; `apps/mobile/` pins Expo/React Native related versions directly.
@@ -64,7 +64,7 @@ Web and desktop share business logic, hooks, stores, components, and views throu
 
 If the same logic exists in both web and desktop, extract it unless it depends on platform APIs:
 
-1. Next.js, Electron, or router APIs stay in the app/platform layer.
+1. Vite/browser, Electron, or router APIs stay in the app/platform layer.
 2. Headless logic belongs in `packages/core/`.
 3. Shared UI or business views belong in `packages/views/`.
 4. Shared primitives belong in `packages/ui/`.

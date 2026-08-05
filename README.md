@@ -187,8 +187,8 @@ See the [CLI and Daemon Guide](CLI_AND_DAEMON.md) for the full command reference
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────────┐
-│   Next.js    │────>│  Go Backend  │────>│   PostgreSQL     │
-│   Frontend   │<────│  (Chi + WS)  │<────│   (pgvector)     │
+│  Vite SPA    │────>│  Go Backend  │────>│   PostgreSQL     │
+│  (CF/static) │<────│  (Chi + WS)  │<────│   (pgvector)     │
 └──────────────┘     └──────┬───────┘     └──────────────────┘
                             │
                      ┌──────┴───────┐
@@ -200,7 +200,7 @@ See the [CLI and Daemon Guide](CLI_AND_DAEMON.md) for the full command reference
 
 | Layer | Stack |
 |-------|-------|
-| Frontend | Next.js 16 (App Router) |
+| Frontend | Vite, React Router, Cloudflare Pages + Worker |
 | Backend | Go (Chi router, sqlc, gorilla/websocket) |
 | Database | PostgreSQL 17 with pgvector |
 | Agent Runtime | Local daemon executing Claude Code, Codex, CodeBuddy, GitHub Copilot CLI, OpenCode, OpenClaw, Hermes, Pi, Cursor Agent, Kimi, Kiro CLI, Antigravity, Qoder CLI, or Trae CLI |

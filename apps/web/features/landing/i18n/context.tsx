@@ -8,7 +8,6 @@ import {
   useState,
   useTransition,
 } from "react";
-import { useRouter } from "next/navigation";
 import { useConfigStore } from "@multica/core/config";
 import { createBrowserCookieLocaleAdapter } from "@multica/core/i18n/browser";
 import { createEnDict } from "./en";
@@ -49,7 +48,6 @@ export function LocaleProvider({
 }) {
   const [locale, setLocaleState] = useState<Locale>(initialLocale);
   const [, startTransition] = useTransition();
-  const router = useRouter();
   const localeAdapter = useMemo(() => createBrowserCookieLocaleAdapter(), []);
   const allowSignup = useConfigStore((state) => state.allowSignup);
   const t = useMemo(
@@ -62,11 +60,9 @@ export function LocaleProvider({
       if (l === locale) return;
       setLocaleState(l);
       localeAdapter.persist(l);
-      startTransition(() => {
-        router.refresh();
-      });
+      startTransition(() => undefined);
     },
-    [locale, localeAdapter, router, startTransition],
+    [locale, localeAdapter, startTransition],
   );
 
   return (

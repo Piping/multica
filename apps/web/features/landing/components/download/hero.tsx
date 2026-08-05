@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/platform/link";
 import { ArrowRight, Download } from "lucide-react";
 import { useLocale } from "../../i18n";
 import type { DetectResult } from "../../utils/os-detect";
