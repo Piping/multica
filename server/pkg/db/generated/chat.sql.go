@@ -1131,6 +1131,8 @@ func (q *Queries) ListAgentBuilderSessionsByCreator(ctx context.Context, arg Lis
 
 const listAllChatSessionsByCreator = `-- name: ListAllChatSessionsByCreator :many
 SELECT cs.id, cs.workspace_id, cs.agent_id, cs.creator_id, cs.title, cs.session_id, cs.work_dir, cs.status, cs.created_at, cs.updated_at, cs.unread_since, cs.runtime_id, cs.last_read_at, cs.is_agent_intro, cs.pinned_at, cs.project_id,
+       a.kind AS agent_kind,
+       COALESCE(a.system_key, '') AS agent_system_key,
        CASE WHEN cs.status = 'archived' THEN 0
             ELSE (SELECT count(*) FROM chat_message m
                     WHERE m.chat_session_id = cs.id
@@ -1143,6 +1145,7 @@ SELECT cs.id, cs.workspace_id, cs.agent_id, cs.creator_id, cs.title, cs.session_
        lm.failure_reason AS last_message_failure_reason,
        COALESCE(lm.message_kind, '') AS last_message_kind
 FROM chat_session cs
+JOIN agent a ON a.id = cs.agent_id
 LEFT JOIN LATERAL (
   SELECT content, role, created_at, failure_reason, message_kind
     FROM chat_message m
@@ -1176,6 +1179,8 @@ type ListAllChatSessionsByCreatorRow struct {
 	IsAgentIntro             bool               `json:"is_agent_intro"`
 	PinnedAt                 pgtype.Timestamptz `json:"pinned_at"`
 	ProjectID                pgtype.UUID        `json:"project_id"`
+	AgentKind                string             `json:"agent_kind"`
+	AgentSystemKey           string             `json:"agent_system_key"`
 	UnreadCount              int32              `json:"unread_count"`
 	LastMessageContent       string             `json:"last_message_content"`
 	LastMessageRole          string             `json:"last_message_role"`
@@ -1217,6 +1222,8 @@ func (q *Queries) ListAllChatSessionsByCreator(ctx context.Context, arg ListAllC
 			&i.IsAgentIntro,
 			&i.PinnedAt,
 			&i.ProjectID,
+			&i.AgentKind,
+			&i.AgentSystemKey,
 			&i.UnreadCount,
 			&i.LastMessageContent,
 			&i.LastMessageRole,
@@ -1410,6 +1417,8 @@ func (q *Queries) ListChatMessagesPage(ctx context.Context, arg ListChatMessages
 
 const listChatSessionsByCreator = `-- name: ListChatSessionsByCreator :many
 SELECT cs.id, cs.workspace_id, cs.agent_id, cs.creator_id, cs.title, cs.session_id, cs.work_dir, cs.status, cs.created_at, cs.updated_at, cs.unread_since, cs.runtime_id, cs.last_read_at, cs.is_agent_intro, cs.pinned_at, cs.project_id,
+       a.kind AS agent_kind,
+       COALESCE(a.system_key, '') AS agent_system_key,
        (SELECT count(*) FROM chat_message m
           WHERE m.chat_session_id = cs.id
             AND m.role = 'assistant'
@@ -1420,6 +1429,7 @@ SELECT cs.id, cs.workspace_id, cs.agent_id, cs.creator_id, cs.title, cs.session_
        lm.failure_reason AS last_message_failure_reason,
        COALESCE(lm.message_kind, '') AS last_message_kind
 FROM chat_session cs
+JOIN agent a ON a.id = cs.agent_id
 LEFT JOIN LATERAL (
   SELECT content, role, created_at, failure_reason, message_kind
     FROM chat_message m
@@ -1453,6 +1463,8 @@ type ListChatSessionsByCreatorRow struct {
 	IsAgentIntro             bool               `json:"is_agent_intro"`
 	PinnedAt                 pgtype.Timestamptz `json:"pinned_at"`
 	ProjectID                pgtype.UUID        `json:"project_id"`
+	AgentKind                string             `json:"agent_kind"`
+	AgentSystemKey           string             `json:"agent_system_key"`
 	UnreadCount              int32              `json:"unread_count"`
 	LastMessageContent       string             `json:"last_message_content"`
 	LastMessageRole          string             `json:"last_message_role"`
@@ -1490,6 +1502,8 @@ func (q *Queries) ListChatSessionsByCreator(ctx context.Context, arg ListChatSes
 			&i.IsAgentIntro,
 			&i.PinnedAt,
 			&i.ProjectID,
+			&i.AgentKind,
+			&i.AgentSystemKey,
 			&i.UnreadCount,
 			&i.LastMessageContent,
 			&i.LastMessageRole,

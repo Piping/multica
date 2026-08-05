@@ -2285,8 +2285,10 @@ export class ApiClient {
     return this.fetch(`/api/chat/sessions/${id}`);
   }
 
-  async createChatSession(data: {
-    agent_id: string;
+  async createChatSession(data: (
+    | { agent_id: string; runtime_id?: never }
+    | { runtime_id: string; agent_id?: never }
+  ) & {
     title?: string;
     project_id?: string | null;
   }): Promise<ChatSession> {

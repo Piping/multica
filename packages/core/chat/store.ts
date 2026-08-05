@@ -14,6 +14,7 @@ import { createLogger } from "../logger";
 const logger = createLogger("chat.store");
 
 const AGENT_STORAGE_KEY = "multica:chat:selectedAgentId";
+const RUNTIME_STORAGE_KEY = "multica:chat:selectedRuntimeId";
 const PROJECT_STORAGE_KEY = "multica:chat:selectedProjectId";
 const SESSION_STORAGE_KEY = "multica:chat:activeSessionId";
 /** Drafts are stored as one JSON blob per workspace: { [sessionId]: text }. */
@@ -306,6 +307,9 @@ export interface ChatState {
   floatingChatEnabled: boolean;
   activeSessionId: string | null;
   selectedAgentId: string | null;
+  /** Runtime selected for the next direct session. Mutually exclusive with
+   *  selectedAgentId at the action layer. */
+  selectedRuntimeId: string | null;
   /** Project context for the next session. Existing sessions remain bound to
    *  their server-persisted project_id. */
   selectedProjectId: string | null;
@@ -327,6 +331,7 @@ export interface ChatState {
   setFloatingChatEnabled: (enabled: boolean) => void;
   setActiveSession: (id: string | null) => void;
   setSelectedAgentId: (id: string) => void;
+  setSelectedRuntimeId: (id: string | null) => void;
   setSelectedProjectId: (id: string | null) => void;
   /** sessionId accepts a real session UUID or DRAFT_NEW_SESSION. */
   setInputDraft: (sessionId: string, draft: string) => void;
@@ -393,6 +398,7 @@ export function createChatStore(options: ChatStoreOptions) {
     floatingChatEnabled: initialFloatingEnabled,
     activeSessionId: storage.getItem(wsKey(SESSION_STORAGE_KEY)),
     selectedAgentId: initialAgentId,
+    selectedRuntimeId: storage.getItem(wsKey(RUNTIME_STORAGE_KEY)),
     selectedProjectId: storage.getItem(wsKey(PROJECT_STORAGE_KEY)),
     inputDrafts: initialDraftSlots.inputDrafts,
     inputDraftAttachments: initialDraftSlots.inputDraftAttachments,
@@ -432,7 +438,18 @@ export function createChatStore(options: ChatStoreOptions) {
     setSelectedAgentId: (id) => {
       logger.info("setSelectedAgentId", { from: get().selectedAgentId, to: id });
       storage.setItem(wsKey(AGENT_STORAGE_KEY), id);
-      set({ selectedAgentId: id });
+      storage.removeItem(wsKey(RUNTIME_STORAGE_KEY));
+      set({ selectedAgentId: id, selectedRuntimeId: null });
+    },
+    setSelectedRuntimeId: (id) => {
+      logger.info("setSelectedRuntimeId", { from: get().selectedRuntimeId, to: id });
+      if (id) {
+        storage.setItem(wsKey(RUNTIME_STORAGE_KEY), id);
+        storage.removeItem(wsKey(AGENT_STORAGE_KEY));
+      } else {
+        storage.removeItem(wsKey(RUNTIME_STORAGE_KEY));
+      }
+      set({ selectedRuntimeId: id, ...(id ? { selectedAgentId: null } : {}) });
     },
     setSelectedProjectId: (id) => {
       logger.info("setSelectedProjectId", { from: get().selectedProjectId, to: id });
@@ -650,6 +667,7 @@ export function createChatStore(options: ChatStoreOptions) {
   registerForWorkspaceRehydration(() => {
     const nextSession = storage.getItem(wsKey(SESSION_STORAGE_KEY));
     const nextAgent = storage.getItem(wsKey(AGENT_STORAGE_KEY));
+    const nextRuntime = storage.getItem(wsKey(RUNTIME_STORAGE_KEY));
     const nextProject = storage.getItem(wsKey(PROJECT_STORAGE_KEY));
     // Drafts are namespaced per workspace, so the workspace being switched TO
     // has its own legacy slots to fold — migrate against that workspace's own
@@ -665,6 +683,8 @@ export function createChatStore(options: ChatStoreOptions) {
       nextSession,
       prevAgent: store.getState().selectedAgentId,
       nextAgent,
+      prevRuntime: store.getState().selectedRuntimeId,
+      nextRuntime,
       prevProject: store.getState().selectedProjectId,
       nextProject,
       draftCount: Object.keys(nextDrafts).length,
@@ -673,6 +693,7 @@ export function createChatStore(options: ChatStoreOptions) {
     store.setState({
       activeSessionId: nextSession,
       selectedAgentId: nextAgent,
+      selectedRuntimeId: nextRuntime,
       selectedProjectId: nextProject,
       inputDrafts: nextDrafts,
       inputDraftAttachments: nextDraftAttachments,

@@ -85,12 +85,34 @@ INSERT INTO agent (
 )
 RETURNING *;
 
+-- name: CreateRuntimeChatCarrier :one
+-- One hidden execution carrier per direct runtime chat. The user chooses an
+-- available runtime rather than a reusable persona agent; keeping the carrier
+-- session-scoped preserves the existing agent-backed task pipeline without
+-- leaking an implementation detail into agent lists or assignment surfaces.
+INSERT INTO agent (
+    workspace_id, name, description, runtime_mode, runtime_config, runtime_id,
+    visibility, permission_mode, max_concurrent_tasks, owner_id, instructions,
+    custom_env, custom_args, kind, system_key
+) VALUES (
+    @workspace_id, @name, '', @runtime_mode, '{}'::jsonb, @runtime_id,
+    'private', 'private', 1, @owner_id, @instructions,
+    '{}'::jsonb, '[]'::jsonb, 'system', @system_key
+)
+RETURNING *;
+
 -- name: DeleteSystemAgentByID :exec
--- Builder sessions own their hidden execution agent. Deleting the session
--- removes that carrier and its task rows; the kind guard prevents this cleanup
--- path from ever deleting a user-authored agent.
+-- Builder and direct-runtime chat sessions own their hidden execution agent.
+-- Deleting the session removes that carrier and its task rows; the kind and
+-- explicit key-prefix guards prevent this path from deleting user agents or
+-- unrelated system agents.
 DELETE FROM agent
-WHERE id = $1 AND kind = 'system' AND system_key LIKE 'agent_builder:%';
+WHERE id = $1
+  AND kind = 'system'
+  AND (
+    system_key LIKE 'agent_builder:%'
+    OR system_key LIKE 'runtime_chat:%'
+  );
 
 -- name: RebindAgentBuilderRuntime :one
 -- Re-points a builder carrier at another runtime mid-conversation. The carrier

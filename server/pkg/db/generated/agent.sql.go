@@ -2082,14 +2082,91 @@ func (q *Queries) CreateRetryTask(ctx context.Context, arg CreateRetryTaskParams
 	return i, err
 }
 
-const deleteSystemAgentByID = `-- name: DeleteSystemAgentByID :exec
-DELETE FROM agent
-WHERE id = $1 AND kind = 'system' AND system_key LIKE 'agent_builder:%'
+const createRuntimeChatCarrier = `-- name: CreateRuntimeChatCarrier :one
+INSERT INTO agent (
+    workspace_id, name, description, runtime_mode, runtime_config, runtime_id,
+    visibility, permission_mode, max_concurrent_tasks, owner_id, instructions,
+    custom_env, custom_args, kind, system_key
+) VALUES (
+    $1, $2, '', $3, '{}'::jsonb, $4,
+    'private', 'private', 1, $5, $6,
+    '{}'::jsonb, '[]'::jsonb, 'system', $7
+)
+RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, runtime_id, instructions, archived_at, archived_by, custom_env, custom_args, mcp_config, model, thinking_level, composio_toolkit_allowlist, permission_mode, kind, system_key, disabled_runtime_skills, service_tier
 `
 
-// Builder sessions own their hidden execution agent. Deleting the session
-// removes that carrier and its task rows; the kind guard prevents this cleanup
-// path from ever deleting a user-authored agent.
+type CreateRuntimeChatCarrierParams struct {
+	WorkspaceID  pgtype.UUID `json:"workspace_id"`
+	Name         string      `json:"name"`
+	RuntimeMode  string      `json:"runtime_mode"`
+	RuntimeID    pgtype.UUID `json:"runtime_id"`
+	OwnerID      pgtype.UUID `json:"owner_id"`
+	Instructions string      `json:"instructions"`
+	SystemKey    pgtype.Text `json:"system_key"`
+}
+
+// One hidden execution carrier per direct runtime chat. The user chooses an
+// available runtime rather than a reusable persona agent; keeping the carrier
+// session-scoped preserves the existing agent-backed task pipeline without
+// leaking an implementation detail into agent lists or assignment surfaces.
+func (q *Queries) CreateRuntimeChatCarrier(ctx context.Context, arg CreateRuntimeChatCarrierParams) (Agent, error) {
+	row := q.db.QueryRow(ctx, createRuntimeChatCarrier,
+		arg.WorkspaceID,
+		arg.Name,
+		arg.RuntimeMode,
+		arg.RuntimeID,
+		arg.OwnerID,
+		arg.Instructions,
+		arg.SystemKey,
+	)
+	var i Agent
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.AvatarUrl,
+		&i.RuntimeMode,
+		&i.RuntimeConfig,
+		&i.Visibility,
+		&i.Status,
+		&i.MaxConcurrentTasks,
+		&i.OwnerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Description,
+		&i.RuntimeID,
+		&i.Instructions,
+		&i.ArchivedAt,
+		&i.ArchivedBy,
+		&i.CustomEnv,
+		&i.CustomArgs,
+		&i.McpConfig,
+		&i.Model,
+		&i.ThinkingLevel,
+		&i.ComposioToolkitAllowlist,
+		&i.PermissionMode,
+		&i.Kind,
+		&i.SystemKey,
+		&i.DisabledRuntimeSkills,
+		&i.ServiceTier,
+	)
+	return i, err
+}
+
+const deleteSystemAgentByID = `-- name: DeleteSystemAgentByID :exec
+DELETE FROM agent
+WHERE id = $1
+  AND kind = 'system'
+  AND (
+    system_key LIKE 'agent_builder:%'
+    OR system_key LIKE 'runtime_chat:%'
+  )
+`
+
+// Builder and direct-runtime chat sessions own their hidden execution agent.
+// Deleting the session removes that carrier and its task rows; the kind and
+// explicit key-prefix guards prevent this path from deleting user agents or
+// unrelated system agents.
 func (q *Queries) DeleteSystemAgentByID(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteSystemAgentByID, id)
 	return err

@@ -12,6 +12,11 @@ import { useWorkspaceId } from "@multica/core/hooks";
 import { useAuthStore } from "@multica/core/auth";
 import { agentListOptions, memberListOptions } from "@multica/core/workspace/queries";
 import { projectListOptions } from "@multica/core/projects/queries";
+import {
+  isRuntimeUsableForUser,
+  runtimeDisplayName,
+  runtimeListOptions,
+} from "@multica/core/runtimes";
 import { canAssignAgent } from "@multica/views/issues/components";
 import { api, dispatchReasonCode } from "@multica/core/api";
 import {
@@ -44,6 +49,7 @@ import type {
   ChatMessage,
   ChatMessagesPage,
   ChatPendingTask,
+  RuntimeDevice,
 } from "@multica/core/types";
 import { useT } from "../../i18n";
 import { useAppForeground } from "../../common/use-app-foreground";
@@ -203,9 +209,11 @@ export function useChatController(opts?: { isActive?: boolean }) {
   const wsId = useWorkspaceId();
   const activeSessionId = useChatStore((s) => s.activeSessionId);
   const selectedAgentId = useChatStore((s) => s.selectedAgentId);
+  const selectedRuntimeId = useChatStore((s) => s.selectedRuntimeId);
   const selectedProjectId = useChatStore((s) => s.selectedProjectId);
   const setActiveSession = useChatStore((s) => s.setActiveSession);
   const setSelectedAgentId = useChatStore((s) => s.setSelectedAgentId);
+  const setSelectedRuntimeId = useChatStore((s) => s.setSelectedRuntimeId);
   const setSelectedProjectId = useChatStore((s) => s.setSelectedProjectId);
   const user = useAuthStore((s) => s.user);
   const { data: agents = [], isSuccess: agentsLoaded } = useQuery(
@@ -213,6 +221,9 @@ export function useChatController(opts?: { isActive?: boolean }) {
   );
   const { data: members = [], isSuccess: membersLoaded } = useQuery(
     memberListOptions(wsId),
+  );
+  const { data: runtimes = [], isSuccess: runtimesLoaded } = useQuery(
+    runtimeListOptions(wsId),
   );
   const { data: sessions = [], isSuccess: sessionsLoaded } = useQuery(
     chatSessionsOptions(wsId),
@@ -298,6 +309,13 @@ export function useChatController(opts?: { isActive?: boolean }) {
   const availableAgents = agents.filter(
     (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
   );
+  const availableRuntimes = runtimes.filter(
+    (runtime) =>
+      runtime.status === "online" &&
+      (memberRole === "owner" ||
+        memberRole === "admin" ||
+        isRuntimeUsableForUser(runtime, user?.id ?? null)),
+  );
   // `availableAgents` is only trustworthy once BOTH queries above succeeded:
   // the permission filter reads the member role, so agents-without-members
   // misreports a public_to agent as unavailable. Consumers that must tell
@@ -317,25 +335,44 @@ export function useChatController(opts?: { isActive?: boolean }) {
   const sessionAgent = currentSession
     ? agents.find((a) => a.id === currentSession.agent_id) ?? null
     : null;
+  const sessionRuntime = currentSession?.runtime_direct && currentSession.runtime_id
+    ? runtimes.find((runtime) => runtime.id === currentSession.runtime_id) ?? null
+    : null;
   const isAgentArchived = !!sessionAgent?.archived_at;
 
   // Resolve selected agent: open session's agent → stored preference → first
   // available. New chats have no session, so they fall through to the picker.
-  const activeAgent =
-    sessionAgent ??
-    availableAgents.find((a) => a.id === selectedAgentId) ??
-    availableAgents[0] ??
-    null;
-  const isAgentRuntimeBound = !!activeAgent && hasAgentRuntime(activeAgent);
+  const activeAgent = currentSession?.runtime_direct
+    ? null
+    : sessionAgent ??
+      availableAgents.find((a) => a.id === selectedAgentId) ??
+      availableAgents[0] ??
+      null;
+  const activeRuntime =
+    sessionRuntime ??
+    (!activeSessionId
+      ? availableRuntimes.find((runtime) => runtime.id === selectedRuntimeId) ?? null
+      : null);
+  const isRuntimeDirect = !!sessionRuntime || (!activeSessionId && !!activeRuntime);
+  const isAgentRuntimeBound = isRuntimeDirect || (!!activeAgent && hasAgentRuntime(activeAgent));
+  const activeTargetName = activeRuntime
+    ? runtimeDisplayName(activeRuntime)
+    : activeAgent?.name;
 
   const agentAvailability = useWorkspaceAgentAvailability();
-  const noAgent = agentAvailability === "none";
+  const noAgent = !activeRuntime && agentAvailability === "none";
 
-  const projectContextSupport = useChatProjectContextSupport(wsId, activeAgent);
+  const projectContextSupport = useChatProjectContextSupport(
+    wsId,
+    activeAgent ?? (activeRuntime ? { runtime_id: activeRuntime.id } : null),
+  );
 
   const presenceDetail = useAgentPresenceDetail(wsId, activeAgent?.id);
-  const availability =
-    presenceDetail === "loading" ? undefined : presenceDetail.availability;
+  const availability = activeRuntime
+    ? activeRuntime.status
+    : presenceDetail === "loading"
+      ? undefined
+      : presenceDetail.availability;
 
   // Auto mark-as-read whenever the user is actively looking at a session with
   // unread state. `isActive` lets the caller say "my surface is on screen":
@@ -387,13 +424,15 @@ export function useChatController(opts?: { isActive?: boolean }) {
       ) {
         return activeSessionId;
       }
-      if (!activeAgent) return null;
+      if (!activeAgent && !activeRuntime) return null;
       if (sessionPromiseRef.current) return sessionPromiseRef.current;
 
       const promise = (async () => {
         try {
           const session = await createSession.mutateAsync({
-            agent_id: activeAgent.id,
+            ...(activeRuntime
+              ? { runtime_id: activeRuntime.id }
+              : { agent_id: activeAgent!.id }),
             title: deriveChatTitle(titleSeed),
             project_id: activeProjectId,
           });
@@ -408,6 +447,7 @@ export function useChatController(opts?: { isActive?: boolean }) {
     [
       activeSessionId,
       activeAgent,
+      activeRuntime,
       activeProjectId,
       createSession,
       sessions,
@@ -433,7 +473,7 @@ export function useChatController(opts?: { isActive?: boolean }) {
 
   // Upload transport moved into the coordinated-upload engine inside ChatInput
   // (MUL-5181 L2); surfaces only forward whether the affordance exists.
-  const uploadEnabled = !!activeAgent;
+  const uploadEnabled = !!activeAgent || !!activeRuntime;
 
   const cancelChatTask = useCallback(
     async (
@@ -491,14 +531,14 @@ export function useChatController(opts?: { isActive?: boolean }) {
       commitInput?: (options?: { extraDraftKeys?: string[]; clearEditor?: boolean }) => void,
       draftAttachments: Attachment[] = [],
     ): Promise<boolean> => {
-      if (!activeAgent) {
-        apiLogger.warn("sendChatMessage skipped: no active agent");
+      if (!activeAgent && !activeRuntime) {
+        apiLogger.warn("sendChatMessage skipped: no active target");
         return false;
       }
       // Read-only conversation: the agent is retired and can no longer pick up
       // work, so refuse to enqueue a task that would sit orphaned forever. The
       // input is disabled in this state; this is the belt-and-braces guard.
-      if (isAgentArchived) {
+      if (activeAgent && isAgentArchived) {
         apiLogger.warn("sendChatMessage skipped: agent is archived", {
           sessionId: activeSessionId,
           agentId: activeAgent.id,
@@ -516,7 +556,8 @@ export function useChatController(opts?: { isActive?: boolean }) {
       apiLogger.info("sendChatMessage.start", {
         sessionId: activeSessionId,
         isNewSession,
-        agentId: activeAgent.id,
+        agentId: activeAgent?.id ?? null,
+        runtimeId: activeRuntime?.id ?? null,
         contentLength: finalContent.length,
         attachmentCount: attachmentIds?.length ?? 0,
       });
@@ -638,6 +679,7 @@ export function useChatController(opts?: { isActive?: boolean }) {
     [
       activeSessionId,
       activeAgent,
+      activeRuntime,
       isAgentArchived,
       isAgentRuntimeBound,
       ensureSession,
@@ -710,8 +752,46 @@ export function useChatController(opts?: { isActive?: boolean }) {
     ],
   );
 
+  const handleStartNewRuntimeChat = useCallback(
+    async (runtime: RuntimeDevice) => {
+      uiLogger.info("startNewRuntimeChat", {
+        runtimeId: runtime.id,
+        previousSessionId: activeSessionId,
+      });
+      setSelectedRuntimeId(runtime.id);
+      setSelectedProjectId(null);
+      const session = await createSession.mutateAsync({
+        runtime_id: runtime.id,
+        title: runtimeDisplayName(runtime),
+        project_id: null,
+      });
+      setActiveSession(session.id);
+      requestInputFocus();
+      return session;
+    },
+    [
+      activeSessionId,
+      createSession,
+      setSelectedRuntimeId,
+      setSelectedProjectId,
+      setActiveSession,
+      requestInputFocus,
+    ],
+  );
+
   const handleSelectSession = useCallback(
-    (session: { id: string; agent_id: string; project_id?: string | null }) => {
+    (session: {
+      id: string;
+      agent_id: string;
+      runtime_id?: string | null;
+      runtime_direct?: boolean;
+      project_id?: string | null;
+    }) => {
+      if (session.runtime_direct && session.runtime_id) {
+        setSelectedRuntimeId(session.runtime_id);
+        setActiveSession(session.id);
+        return;
+      }
       // Sessions are bound 1:1 to an agent — picking a session from a
       // different agent implicitly switches the agent too.
       if (activeAgent && session.agent_id !== activeAgent.id) {
@@ -724,7 +804,12 @@ export function useChatController(opts?: { isActive?: boolean }) {
       }
       setActiveSession(session.id);
     },
-    [activeAgent, setSelectedAgentId, setActiveSession],
+    [
+      activeAgent,
+      setSelectedAgentId,
+      setSelectedRuntimeId,
+      setActiveSession,
+    ],
   );
 
   const handleProjectChange = useCallback(
@@ -735,6 +820,20 @@ export function useChatController(opts?: { isActive?: boolean }) {
         to: projectId,
         previousSessionId: activeSessionId,
       });
+      if (currentSession?.runtime_direct && currentSession.runtime_id) {
+        if (projectId === null) {
+          setSessionProject.mutate({
+            sessionId: currentSession.id,
+            projectId: null,
+          });
+        } else {
+          setSelectedRuntimeId(currentSession.runtime_id);
+          setSelectedProjectId(projectId);
+          setActiveSession(null);
+        }
+        requestInputFocus();
+        return;
+      }
       const plan = planProjectContextChange({
         targetProjectId: projectId,
         activeSessionId,
@@ -762,6 +861,7 @@ export function useChatController(opts?: { isActive?: boolean }) {
       currentSession,
       setSessionProject,
       setSelectedAgentId,
+      setSelectedRuntimeId,
       setSelectedProjectId,
       setActiveSession,
       requestInputFocus,
@@ -804,19 +904,27 @@ export function useChatController(opts?: { isActive?: boolean }) {
     agents,
     availableAgents,
     agentsSettled,
+    runtimes,
+    availableRuntimes,
+    runtimesSettled: runtimesLoaded && membersLoaded,
     sessions,
     projects,
     activeSessionId,
     selectedAgentId,
+    selectedRuntimeId,
     activeProjectId,
     projectContextUnsupported: projectContextSupport === false,
     isProjectUpdating:
       setSessionProject.isPending || (!!activeSessionId && !currentSession),
+    isCreatingSession: createSession.isPending,
     currentSession,
     isSessionArchived,
     isAgentArchived,
     isAgentRuntimeBound,
     activeAgent,
+    activeRuntime,
+    isRuntimeDirect,
+    activeTargetName,
     noAgent,
     availability,
     // messages
@@ -840,6 +948,7 @@ export function useChatController(opts?: { isActive?: boolean }) {
     uploadEnabled,
     handleNewChat,
     handleStartNewChat,
+    handleStartNewRuntimeChat,
     handleSelectSession,
     handleProjectChange,
     advanceSelectionAfterArchive,
@@ -847,6 +956,7 @@ export function useChatController(opts?: { isActive?: boolean }) {
     // store setters (for surfaces that sync selection to the URL, etc.)
     setActiveSession,
     setSelectedAgentId,
+    setSelectedRuntimeId,
   };
 }
 

@@ -24,6 +24,8 @@ WHERE id = $1 AND workspace_id = $2;
 -- messages after the read cursor), a preview of the latest message, and
 -- ordered by most-recent activity so a new reply bumps a session to the top.
 SELECT cs.*,
+       a.kind AS agent_kind,
+       COALESCE(a.system_key, '') AS agent_system_key,
        (SELECT count(*) FROM chat_message m
           WHERE m.chat_session_id = cs.id
             AND m.role = 'assistant'
@@ -34,6 +36,7 @@ SELECT cs.*,
        lm.failure_reason AS last_message_failure_reason,
        COALESCE(lm.message_kind, '') AS last_message_kind
 FROM chat_session cs
+JOIN agent a ON a.id = cs.agent_id
 LEFT JOIN LATERAL (
   SELECT content, role, created_at, failure_reason, message_kind
     FROM chat_message m
@@ -53,6 +56,8 @@ ORDER BY (cs.pinned_at IS NOT NULL) DESC, cs.pinned_at DESC, COALESCE(lm.created
 -- on status here is the single source of truth for all unread surfaces (FAB,
 -- sidebar Chat tab, chat-window header) — see MUL-4360.
 SELECT cs.*,
+       a.kind AS agent_kind,
+       COALESCE(a.system_key, '') AS agent_system_key,
        CASE WHEN cs.status = 'archived' THEN 0
             ELSE (SELECT count(*) FROM chat_message m
                     WHERE m.chat_session_id = cs.id
@@ -65,6 +70,7 @@ SELECT cs.*,
        lm.failure_reason AS last_message_failure_reason,
        COALESCE(lm.message_kind, '') AS last_message_kind
 FROM chat_session cs
+JOIN agent a ON a.id = cs.agent_id
 LEFT JOIN LATERAL (
   SELECT content, role, created_at, failure_reason, message_kind
     FROM chat_message m

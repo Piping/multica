@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/analytics"
@@ -26,12 +28,17 @@ import (
 // meaningful summary, short enough to keep the dropdown row scannable.
 const chatSessionTitleMaxLen = 200
 
+const runtimeChatInstructions = `You are an AI agent working directly with the user in a persistent session.
+
+Use the tools and workspace available through the selected runtime to inspect, explain, and modify the user's project. Be concise and concrete. Before changing files, understand the relevant code and preserve unrelated work. Report what you changed and how you verified it. Ask a focused question only when a required decision cannot be inferred safely.`
+
 // ---------------------------------------------------------------------------
 // Chat Sessions
 // ---------------------------------------------------------------------------
 
 type CreateChatSessionRequest struct {
 	AgentID   string  `json:"agent_id"`
+	RuntimeID string  `json:"runtime_id"`
 	Title     string  `json:"title"`
 	ProjectID *string `json:"project_id"`
 }
@@ -48,12 +55,10 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.AgentID == "" {
-		writeError(w, http.StatusBadRequest, "agent_id is required")
-		return
-	}
-	agentID, ok := parseUUIDOrBadRequest(w, req.AgentID, "agent_id")
-	if !ok {
+	req.AgentID = strings.TrimSpace(req.AgentID)
+	req.RuntimeID = strings.TrimSpace(req.RuntimeID)
+	if (req.AgentID == "") == (req.RuntimeID == "") {
+		writeError(w, http.StatusBadRequest, "exactly one of agent_id or runtime_id is required")
 		return
 	}
 	workspaceUUID, ok := parseUUIDOrBadRequest(w, workspaceID, "workspace id")
@@ -68,26 +73,41 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Verify agent exists in workspace.
-	agent, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{
-		ID:          agentID,
-		WorkspaceID: workspaceUUID,
-	})
-	if err != nil {
-		writeError(w, http.StatusNotFound, "agent not found")
-		return
-	}
-	if agent.ArchivedAt.Valid {
-		writeError(w, http.StatusBadRequest, "agent is archived")
-		return
-	}
-	// Invocation gate: starting a chat produces agent runs, so it uses the
-	// invoke permission (MUL-3963), not the softer view gate. Agent-to-agent
-	// chat sessions are judged by the top-of-chain originator.
-	actorType, actorID := h.resolveActor(r, userID, workspaceID)
-	if !h.canInvokeAgent(r.Context(), agent, actorType, actorID, h.invokeOriginatorFromRequest(r, actorType, actorID), workspaceID) {
-		writeError(w, http.StatusForbidden, "you do not have access to this agent")
-		return
+	var (
+		agentID pgtype.UUID
+		runtime db.AgentRuntime
+	)
+	if req.AgentID != "" {
+		agentID, ok = parseUUIDOrBadRequest(w, req.AgentID, "agent_id")
+		if !ok {
+			return
+		}
+		// Verify agent exists in workspace.
+		agent, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{
+			ID:          agentID,
+			WorkspaceID: workspaceUUID,
+		})
+		if err != nil {
+			writeError(w, http.StatusNotFound, "agent not found")
+			return
+		}
+		if agent.ArchivedAt.Valid {
+			writeError(w, http.StatusBadRequest, "agent is archived")
+			return
+		}
+		// Invocation gate: starting a chat produces agent runs, so it uses the
+		// invoke permission (MUL-3963), not the softer view gate. Agent-to-agent
+		// chat sessions are judged by the top-of-chain originator.
+		actorType, actorID := h.resolveActor(r, userID, workspaceID)
+		if !h.canInvokeAgent(r.Context(), agent, actorType, actorID, h.invokeOriginatorFromRequest(r, actorType, actorID), workspaceID) {
+			writeError(w, http.StatusForbidden, "you do not have access to this agent")
+			return
+		}
+	} else {
+		runtime, ok = h.resolveRuntimeChatRuntime(w, r, workspaceID, workspaceUUID, req.RuntimeID)
+		if !ok {
+			return
+		}
 	}
 
 	// Create inside a tx that first takes a FOR KEY SHARE lock on the workspace
@@ -125,6 +145,27 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if req.RuntimeID != "" {
+		flowID := uuid.NewString()
+		carrier, err := qtx.CreateRuntimeChatCarrier(r.Context(), db.CreateRuntimeChatCarrierParams{
+			WorkspaceID:  workspaceUUID,
+			Name:         fmt.Sprintf(".multica-runtime-chat-%s", flowID),
+			RuntimeMode:  runtime.RuntimeMode,
+			RuntimeID:    runtime.ID,
+			OwnerID:      parseUUID(userID),
+			Instructions: runtimeChatInstructions,
+			SystemKey: pgtype.Text{
+				String: fmt.Sprintf("runtime_chat:%s", flowID),
+				Valid:  true,
+			},
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to prepare runtime chat")
+			return
+		}
+		agentID = carrier.ID
+	}
+
 	session, err := qtx.CreateChatSession(r.Context(), db.CreateChatSessionParams{
 		WorkspaceID: workspaceUUID,
 		AgentID:     agentID,
@@ -142,7 +183,37 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, chatSessionToResponse(session))
+	response := chatSessionToResponse(session)
+	response.RuntimeDirect = req.RuntimeID != ""
+	writeJSON(w, http.StatusCreated, response)
+}
+
+func (h *Handler) resolveRuntimeChatRuntime(w http.ResponseWriter, r *http.Request, workspaceID string, workspaceUUID pgtype.UUID, runtimeID string) (db.AgentRuntime, bool) {
+	runtimeUUID, ok := parseUUIDOrBadRequest(w, runtimeID, "runtime_id")
+	if !ok {
+		return db.AgentRuntime{}, false
+	}
+	runtime, err := h.Queries.GetAgentRuntimeForWorkspace(r.Context(), db.GetAgentRuntimeForWorkspaceParams{
+		ID:          runtimeUUID,
+		WorkspaceID: workspaceUUID,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid runtime_id")
+		return db.AgentRuntime{}, false
+	}
+	member, ok := h.workspaceMember(w, r, workspaceID)
+	if !ok {
+		return db.AgentRuntime{}, false
+	}
+	if !canUseRuntimeForAgent(member, runtime) {
+		writeError(w, http.StatusForbidden, "this runtime is private; only its owner or a workspace admin can use it")
+		return db.AgentRuntime{}, false
+	}
+	if runtime.Status != "online" {
+		writeError(w, http.StatusConflict, "runtime must be online to start a chat session")
+		return db.AgentRuntime{}, false
+	}
+	return runtime, true
 }
 
 func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +256,7 @@ func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
 		}
 		resp = make([]ChatSessionResponse, 0, len(rows))
 		for _, s := range rows {
-			if _, ok := allowed[uuidToString(s.AgentID)]; !ok {
+			if _, ok := allowed[uuidToString(s.AgentID)]; !ok && !isRuntimeChatCarrierIdentity(s.AgentKind, s.AgentSystemKey) {
 				continue
 			}
 			resp = append(resp, ChatSessionResponse{
@@ -194,6 +265,11 @@ func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
 				AgentID:     uuidToString(s.AgentID),
 				CreatorID:   uuidToString(s.CreatorID),
 				ProjectID:   uuidToPtr(s.ProjectID),
+				RuntimeID:   uuidToPtr(s.RuntimeID),
+				RuntimeDirect: isRuntimeChatCarrierIdentity(
+					s.AgentKind,
+					s.AgentSystemKey,
+				),
 				Title:       s.Title,
 				Status:      s.Status,
 				HasUnread:   s.UnreadCount > 0,
@@ -215,7 +291,7 @@ func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
 		}
 		resp = make([]ChatSessionResponse, 0, len(rows))
 		for _, s := range rows {
-			if _, ok := allowed[uuidToString(s.AgentID)]; !ok {
+			if _, ok := allowed[uuidToString(s.AgentID)]; !ok && !isRuntimeChatCarrierIdentity(s.AgentKind, s.AgentSystemKey) {
 				continue
 			}
 			resp = append(resp, ChatSessionResponse{
@@ -224,6 +300,11 @@ func (h *Handler) ListChatSessions(w http.ResponseWriter, r *http.Request) {
 				AgentID:     uuidToString(s.AgentID),
 				CreatorID:   uuidToString(s.CreatorID),
 				ProjectID:   uuidToPtr(s.ProjectID),
+				RuntimeID:   uuidToPtr(s.RuntimeID),
+				RuntimeDirect: isRuntimeChatCarrierIdentity(
+					s.AgentKind,
+					s.AgentSystemKey,
+				),
 				Title:       s.Title,
 				Status:      s.Status,
 				HasUnread:   s.UnreadCount > 0,
@@ -277,6 +358,12 @@ func (h *Handler) gateChatSessionForUser(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusNotFound, "agent not found")
 		return db.ChatSession{}, false
 	}
+	// A direct runtime chat has a private, session-scoped system carrier. The
+	// creator check above is its authorization boundary; it is intentionally
+	// absent from normal agent permission tables and user-facing agent lists.
+	if isRuntimeChatCarrier(agent) {
+		return session, true
+	}
 	actorType, actorID := h.resolveActor(r, userID, workspaceID)
 	if !h.canAccessPrivateAgent(r.Context(), agent, actorType, actorID, workspaceID) {
 		writeError(w, http.StatusForbidden, "you do not have access to this agent")
@@ -298,7 +385,7 @@ func (h *Handler) GetChatSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, chatSessionToResponse(session))
+	writeJSON(w, http.StatusOK, h.chatSessionToResponse(r.Context(), session))
 }
 
 type UpdateChatSessionRequest struct {
@@ -423,7 +510,7 @@ func (h *Handler) UpdateChatSession(w http.ResponseWriter, r *http.Request) {
 	}
 	h.publishChat(protocol.EventChatSessionUpdated, workspaceID, "member", userID, resolvedSessionID, payload)
 
-	writeJSON(w, http.StatusOK, chatSessionToResponse(updated))
+	writeJSON(w, http.StatusOK, h.chatSessionToResponse(r.Context(), updated))
 }
 
 type SetChatSessionPinnedRequest struct {
@@ -471,7 +558,7 @@ func (h *Handler) SetChatSessionPinned(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:     timestampToString(updated.UpdatedAt),
 	})
 
-	writeJSON(w, http.StatusOK, chatSessionToResponse(updated))
+	writeJSON(w, http.StatusOK, h.chatSessionToResponse(r.Context(), updated))
 }
 
 type SetChatSessionArchivedRequest struct {
@@ -552,7 +639,7 @@ func (h *Handler) SetChatSessionArchived(w http.ResponseWriter, r *http.Request)
 		UpdatedAt:     timestampToString(updated.UpdatedAt),
 	})
 
-	writeJSON(w, http.StatusOK, chatSessionToResponse(updated))
+	writeJSON(w, http.StatusOK, h.chatSessionToResponse(r.Context(), updated))
 }
 
 // DeleteChatSession hard-deletes a chat session owned by the caller. The
@@ -771,9 +858,11 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	// message / attachments / task. Blocked returns a structured, enumeration-safe
 	// reason so the composer can explain it without leaking private-agent details.
 	actorType, actorID := h.resolveActor(r, userID, workspaceID)
-	if !h.canInvokeAgent(r.Context(), agent, actorType, actorID, h.invokeOriginatorFromRequest(r, actorType, actorID), workspaceID) {
-		h.writeDispatchBlocked(w, http.StatusForbidden, ReasonInvocationNotAllowed)
-		return
+	if !isRuntimeChatCarrier(agent) {
+		if !h.canInvokeAgent(r.Context(), agent, actorType, actorID, h.invokeOriginatorFromRequest(r, actorType, actorID), workspaceID) {
+			h.writeDispatchBlocked(w, http.StatusForbidden, ReasonInvocationNotAllowed)
+			return
+		}
 	}
 
 	// Detect whether this is the very first human message in the session,
@@ -949,7 +1038,7 @@ func (h *Handler) RegenerateChatQuickActions(w http.ResponseWriter, r *http.Requ
 	// gateChatSessionForUser. Deliberately NOT relaxed as a side effect of
 	// moving generation server-side.
 	actorType, actorID := h.resolveActor(r, userID, workspaceID)
-	if !h.canInvokeAgent(r.Context(), agent, actorType, actorID, h.invokeOriginatorFromRequest(r, actorType, actorID), workspaceID) {
+	if !isRuntimeChatCarrier(agent) && !h.canInvokeAgent(r.Context(), agent, actorType, actorID, h.invokeOriginatorFromRequest(r, actorType, actorID), workspaceID) {
 		h.writeDispatchBlocked(w, http.StatusForbidden, ReasonInvocationNotAllowed)
 		return
 	}
@@ -1573,8 +1662,12 @@ type ChatSessionResponse struct {
 	AgentID     string  `json:"agent_id"`
 	CreatorID   string  `json:"creator_id"`
 	ProjectID   *string `json:"project_id"`
-	Title       string  `json:"title"`
-	Status      string  `json:"status"`
+	// RuntimeID is populated for direct-runtime chats so the client can render
+	// the selected execution environment without exposing the hidden carrier.
+	RuntimeID     *string `json:"runtime_id"`
+	RuntimeDirect bool    `json:"runtime_direct"`
+	Title         string  `json:"title"`
+	Status        string  `json:"status"`
 	// Only populated by list endpoints — single-session fetches return 0/false/nil.
 	// HasUnread is kept as a convenience (== UnreadCount > 0) for existing consumers.
 	HasUnread   bool             `json:"has_unread"`
@@ -1651,12 +1744,30 @@ func chatSessionToResponse(s db.ChatSession) ChatSessionResponse {
 		AgentID:     uuidToString(s.AgentID),
 		CreatorID:   uuidToString(s.CreatorID),
 		ProjectID:   uuidToPtr(s.ProjectID),
+		RuntimeID:   uuidToPtr(s.RuntimeID),
 		Title:       s.Title,
 		Status:      s.Status,
 		Pinned:      s.PinnedAt.Valid,
 		CreatedAt:   timestampToString(s.CreatedAt),
 		UpdatedAt:   timestampToString(s.UpdatedAt),
 	}
+}
+
+func (h *Handler) chatSessionToResponse(ctx context.Context, session db.ChatSession) ChatSessionResponse {
+	response := chatSessionToResponse(session)
+	if agent, err := h.Queries.GetAgent(ctx, session.AgentID); err == nil {
+		response.RuntimeDirect = isRuntimeChatCarrier(agent)
+	}
+	return response
+}
+
+func isRuntimeChatCarrier(agent db.Agent) bool {
+	return isRuntimeChatCarrierIdentity(agent.Kind, agent.SystemKey.String) &&
+		agent.SystemKey.Valid
+}
+
+func isRuntimeChatCarrierIdentity(kind, systemKey string) bool {
+	return kind == "system" && strings.HasPrefix(systemKey, "runtime_chat:")
 }
 
 func chatMessageToResponse(m db.ChatMessage, attachments []AttachmentResponse) ChatMessageResponse {

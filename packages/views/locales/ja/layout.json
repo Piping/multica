@@ -2,6 +2,7 @@
   "nav": {
     "inbox": "インボックス",
     "chat": "チャット",
+    "agent_chat": "Agent",
     "my_issues": "マイイシュー",
     "issues": "イシュー",
     "projects": "プロジェクト",

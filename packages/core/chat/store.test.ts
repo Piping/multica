@@ -188,6 +188,34 @@ describe("chat store — selected project", () => {
   });
 });
 
+describe("chat store — selected runtime", () => {
+  it("persists runtime selection and clears the legacy agent selection", () => {
+    const storage = memStorage();
+    storage.setItem("multica:chat:selectedAgentId", "agent-1");
+    const store = createChatStore({ storage });
+
+    store.getState().setSelectedRuntimeId("runtime-1");
+
+    expect(store.getState().selectedRuntimeId).toBe("runtime-1");
+    expect(store.getState().selectedAgentId).toBeNull();
+    expect(storage.getItem("multica:chat:selectedRuntimeId")).toBe("runtime-1");
+    expect(storage.getItem("multica:chat:selectedAgentId")).toBeNull();
+  });
+
+  it("clears runtime selection when an agent is selected", () => {
+    const storage = memStorage();
+    storage.setItem("multica:chat:selectedRuntimeId", "runtime-1");
+    const store = createChatStore({ storage });
+
+    store.getState().setSelectedAgentId("agent-1");
+
+    expect(store.getState().selectedAgentId).toBe("agent-1");
+    expect(store.getState().selectedRuntimeId).toBeNull();
+    expect(storage.getItem("multica:chat:selectedAgentId")).toBe("agent-1");
+    expect(storage.getItem("multica:chat:selectedRuntimeId")).toBeNull();
+  });
+});
+
 describe("chat store — draft attachments", () => {
   let store: ReturnType<typeof createChatStore>;
 

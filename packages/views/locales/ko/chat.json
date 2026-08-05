@@ -1,8 +1,17 @@
 {
   "page": {
-    "title": "채팅",
-    "select_prompt": "대화를 선택하거나 +로 새로 시작하세요",
+    "title": "Agent",
+    "select_prompt": "세션을 선택하거나 runtime으로 시작하세요",
     "agent_link_no_access": "이 에이전트와 채팅할 권한이 없습니다."
+  },
+  "runtime_picker": {
+    "new_session": "새 세션",
+    "title": "runtime 선택",
+    "launch_title": "Agent 세션 시작",
+    "description": "온라인이며 사용 가능한 runtime을 선택해 지속 세션을 만드세요.",
+    "empty_title": "사용 가능한 runtime 없음",
+    "empty_description": "runtime을 연결하거나 소유자에게 워크스페이스 공개를 요청하세요.",
+    "create_failed": "Agent 세션을 만들지 못했습니다"
   },
   "fab": {
     "running": "Multica가 작업 중입니다...",
@@ -127,7 +136,8 @@
     "returning_title_named": "안녕하세요, 저는 {{name}}입니다",
     "returning_title_default": "Multica에 오신 것을 환영합니다",
     "returning_subtitle": "이렇게 요청해 보세요",
-    "chat_with_named": "{{name}}와 채팅"
+    "chat_with_named": "{{name}}와 채팅",
+    "runtime_session": "{{name}}의 세션"
   },
   "starter_prompts": {
     "list_open": "열린 작업을 우선순위별로 정리해 줘",

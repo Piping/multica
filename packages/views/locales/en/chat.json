@@ -1,8 +1,17 @@
 {
   "page": {
-    "title": "Chat",
-    "select_prompt": "Pick a conversation, or start a new one with +",
+    "title": "Agent",
+    "select_prompt": "Pick a session or start one with a runtime",
     "agent_link_no_access": "You don't have access to chat with this agent."
+  },
+  "runtime_picker": {
+    "new_session": "New session",
+    "title": "Choose a runtime",
+    "launch_title": "Start an agent session",
+    "description": "Choose an online runtime to create a persistent agent session.",
+    "empty_title": "No available runtimes",
+    "empty_description": "Connect a runtime or ask its owner to make it available in this workspace.",
+    "create_failed": "Failed to create agent session"
   },
   "fab": {
     "running": "Multica is working...",
@@ -15,13 +24,13 @@
     "placeholder_archived": "This session is archived",
     "placeholder_archived_agent": "This agent has been archived",
     "placeholder_runtime_required": "Bind a runtime to continue",
-    "placeholder_named": "Message {{name}}…",
+    "placeholder_named": "Message {{name}}...",
     "placeholder_default": "Start a message…",
     "send_tooltip": "Send",
     "stop_tooltip": "Stop",
     "send_failed_toast": "Failed to send message",
     "send_blocked_toast": "Message not sent — you no longer have permission to use this agent",
-    "runtime_required_toast": "Message not sent — bind a runtime to this agent first",
+    "runtime_required_toast": "Message not sent - choose an available runtime first",
     "attachment_bind_failed_toast": "Message sent, but files were not attached. Please try again in a moment.",
     "add_tooltip": "Add",
     "upload_file": "Image or files",
@@ -130,7 +139,8 @@
     "returning_title_named": "Hi, I'm {{name}}",
     "returning_title_default": "Welcome to Multica",
     "returning_subtitle": "Try asking",
-    "chat_with_named": "Chat with {{name}}"
+    "chat_with_named": "Chat with {{name}}",
+    "runtime_session": "Session on {{name}}"
   },
   "starter_prompts": {
     "list_open": "List my open tasks by priority",

@@ -25,8 +25,15 @@ import {
   useSetChatSessionPinned,
 } from "@multica/core/chat/mutations";
 import { useChatStore } from "@multica/core/chat";
-import type { Agent, ChatSession, PendingChatTasksResponse } from "@multica/core/types";
+import { runtimeDisplayName } from "@multica/core/runtimes";
+import type {
+  Agent,
+  ChatSession,
+  PendingChatTasksResponse,
+  RuntimeDevice,
+} from "@multica/core/types";
 import { ActorAvatar } from "../../common/actor-avatar";
+import { ProviderLogo } from "../../runtimes/components/provider-logo";
 import { createLogger } from "@multica/core/logger";
 import { removeChatMessageFromCaches } from "@multica/core/realtime";
 import { useT } from "../../i18n";
@@ -73,12 +80,14 @@ function toPreview(content: string): string {
 export function ChatThreadList({
   sessions,
   agents,
+  runtimes = [],
   activeSessionId,
   onSelectSession,
   onArchive,
 }: {
   sessions: ChatSession[];
   agents: Agent[];
+  runtimes?: RuntimeDevice[];
   activeSessionId: string | null;
   onSelectSession: (session: ChatSession) => void;
   // Archiving is owned by the parent so the selection advance stays layout-
@@ -89,6 +98,10 @@ export function ChatThreadList({
   const { t } = useT("chat");
   const wsId = useWorkspaceId();
   const agentById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
+  const runtimeById = useMemo(
+    () => new Map(runtimes.map((runtime) => [runtime.id, runtime])),
+    [runtimes],
+  );
 
   // Split the flat cache locally: active chats fill the default history view,
   // archived chats fill the "Archived" view. Both sorted pinned-first (then by
@@ -186,14 +199,20 @@ export function ChatThreadList({
   const renderRow = (session: ChatSession) => {
     const isCurrent = session.id === activeSessionId;
     const agent = agentById.get(session.agent_id) ?? null;
+    const runtime =
+      session.runtime_direct && session.runtime_id
+        ? runtimeById.get(session.runtime_id) ?? null
+        : null;
     const pendingTask = pendingTaskBySessionId.get(session.id);
     const isRunning = !!pendingTask;
     // Only "offline" (definitively long-offline) downgrades typing → waiting.
     // Unknown/loading presence keeps the optimistic "typing…" so we never
     // suppress it just because presence data hasn't landed yet.
-    const agentOffline = agent
-      ? presence.byAgent.get(agent.id)?.availability === "offline"
-      : false;
+    const agentOffline = runtime
+      ? runtime.status === "offline"
+      : agent
+        ? presence.byAgent.get(agent.id)?.availability === "offline"
+        : false;
     const unread = isCurrent ? 0 : (session.unread_count ?? 0);
     const isConfirmingDelete = confirmingDeleteId === session.id;
     const isConfirmingStop = confirmingStopId === session.id && !!pendingTask;
@@ -267,7 +286,11 @@ export function ChatThreadList({
       >
         {/* Thin ring keeps photo + fallback avatars reading as the same circle
             (the fallback's faint bg otherwise looks smaller). */}
-        {agent ? (
+        {runtime ? (
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-background">
+            <ProviderLogo provider={runtime.provider} className="size-4" />
+          </span>
+        ) : agent ? (
           <ActorAvatar actorType="agent" actorId={agent.id} size="lg" enableHoverCard className="ring-1 ring-inset ring-border" />
         ) : (
           <span className="size-8 shrink-0" />
@@ -282,7 +305,13 @@ export function ChatThreadList({
                 className="size-3 shrink-0 -rotate-45 fill-current text-muted-foreground"
               />
             )}
-            <span className={cn("min-w-0 flex-1 truncate text-body", unread > 0 ? "font-semibold text-foreground" : "font-medium")}>
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-body",
+                unread > 0 ? "font-semibold text-foreground" : "font-medium",
+              )}
+              title={runtime ? runtimeDisplayName(runtime) : undefined}
+            >
               {titleText}
             </span>
             <span className="ml-auto shrink-0 text-micro text-muted-foreground">{timeText}</span>

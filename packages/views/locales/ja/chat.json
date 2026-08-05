@@ -1,8 +1,17 @@
 {
   "page": {
-    "title": "チャット",
-    "select_prompt": "会話を選ぶか、＋ で新規作成してください",
+    "title": "Agent",
+    "select_prompt": "セッションを選択するか、runtime から開始してください",
     "agent_link_no_access": "このエージェントとチャットする権限がありません。"
+  },
+  "runtime_picker": {
+    "new_session": "新しいセッション",
+    "title": "runtime を選択",
+    "launch_title": "Agent セッションを開始",
+    "description": "オンラインで利用可能な runtime を選択して、永続セッションを作成します。",
+    "empty_title": "利用可能な runtime がありません",
+    "empty_description": "runtime を接続するか、所有者にワークスペースで公開してもらってください。",
+    "create_failed": "Agent セッションを作成できませんでした"
   },
   "fab": {
     "running": "Multica が作業中です...",
@@ -127,7 +136,8 @@
     "returning_title_named": "こんにちは、{{name}} です",
     "returning_title_default": "Multica へようこそ",
     "returning_subtitle": "こう聞いてみましょう",
-    "chat_with_named": "{{name}} とチャット"
+    "chat_with_named": "{{name}} とチャット",
+    "runtime_session": "{{name}} のセッション"
   },
   "starter_prompts": {
     "list_open": "オープンなタスクを優先度順にまとめて",

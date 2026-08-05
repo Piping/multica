@@ -1,8 +1,17 @@
 {
   "page": {
-    "title": "聊天",
-    "select_prompt": "选择一个对话，或点 + 新建",
+    "title": "Agent",
+    "select_prompt": "选择已有会话，或选择 runtime 新建",
     "agent_link_no_access": "你没有权限与该智能体聊天。"
+  },
+  "runtime_picker": {
+    "new_session": "新建会话",
+    "title": "选择 runtime",
+    "launch_title": "新建 Agent 会话",
+    "description": "选择一个在线且可用的 runtime，创建持久会话。",
+    "empty_title": "没有可用的 runtime",
+    "empty_description": "请先连接 runtime，或让所有者将其设为工作区可用。",
+    "create_failed": "Agent 会话创建失败"
   },
   "fab": {
     "running": "Multica 正在工作...",
@@ -127,7 +136,8 @@
     "returning_title_named": "你好，我是 {{name}}",
     "returning_title_default": "欢迎使用 Multica",
     "returning_subtitle": "试试问",
-    "chat_with_named": "与 {{name}} 对话"
+    "chat_with_named": "与 {{name}} 对话",
+    "runtime_session": "{{name}} 上的会话"
   },
   "starter_prompts": {
     "list_open": "按优先级列出我未完成的任务",

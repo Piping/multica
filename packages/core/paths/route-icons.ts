@@ -46,6 +46,7 @@ export type RouteIconName =
 export type NavLabelKey =
   | "inbox"
   | "chat"
+  | "agent_chat"
   | "my_issues"
   | "issues"
   | "projects"

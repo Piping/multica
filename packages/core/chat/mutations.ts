@@ -106,9 +106,13 @@ export function useCreateChatSession() {
   const wsId = useWorkspaceId();
 
   return useMutation({
-    mutationFn: (data: { agent_id: string; title?: string; project_id?: string | null }) => {
+    mutationFn: (data: (
+      | { agent_id: string; runtime_id?: never }
+      | { runtime_id: string; agent_id?: never }
+    ) & { title?: string; project_id?: string | null }) => {
       logger.info("createChatSession.start", {
-        agent_id: data.agent_id,
+        agent_id: data.agent_id ?? null,
+        runtime_id: data.runtime_id ?? null,
         project_id: data.project_id,
         titleLength: data.title?.length ?? 0,
       });
@@ -116,6 +120,10 @@ export function useCreateChatSession() {
     },
     onSuccess: (session) => {
       logger.info("createChatSession.success", { sessionId: session.id, agentId: session.agent_id });
+      qc.setQueryData<ChatSession[]>(chatKeys.sessions(wsId), (current) => {
+        if (current?.some((item) => item.id === session.id)) return current;
+        return sortChatSessions([session, ...(current ?? [])]);
+      });
     },
     onError: (err) => {
       logger.error("createChatSession.error", err);

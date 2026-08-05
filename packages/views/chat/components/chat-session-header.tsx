@@ -27,8 +27,10 @@ import {
   useSetChatSessionArchived,
 } from "@multica/core/chat/mutations";
 import { useChatStore } from "@multica/core/chat";
-import type { Agent, ChatSession } from "@multica/core/types";
+import { runtimeDisplayName } from "@multica/core/runtimes";
+import type { Agent, ChatSession, RuntimeDevice } from "@multica/core/types";
 import { ActorAvatar } from "../../common/actor-avatar";
+import { ProviderLogo } from "../../runtimes/components/provider-logo";
 import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 
@@ -41,10 +43,12 @@ import { useT } from "../../i18n";
 export function ChatSessionHeader({
   session,
   agent,
+  runtime,
   onArchive,
 }: {
   session: ChatSession;
   agent: Agent | null;
+  runtime?: RuntimeDevice | null;
   // Archiving the open conversation must move the pane off it (advance to the
   // next chat on desktop, back to the list on mobile), so the parent owns it —
   // see ChatPage.handleArchive. Falls back to a plain status flip if unwired.
@@ -104,7 +108,11 @@ export function ChatSessionHeader({
 
   return (
     <div className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
-      {agent ? (
+      {runtime ? (
+        <span className="flex size-[30px] shrink-0 items-center justify-center rounded-md border bg-background">
+          <ProviderLogo provider={runtime.provider} className="size-4" />
+        </span>
+      ) : agent ? (
         <ActorAvatar actorType="agent" actorId={agent.id} size="lg" enableHoverCard showStatusDot />
       ) : (
         <span className="size-[30px] shrink-0" />
@@ -140,12 +148,16 @@ export function ChatSessionHeader({
             {title}
           </button>
         )}
-        {agent && (
+        {runtime ? (
+          <div className="truncate text-caption text-muted-foreground">
+            {runtimeDisplayName(runtime)}
+          </div>
+        ) : agent ? (
           <div className="truncate text-caption text-muted-foreground">
             {agent.name}
             {agent.description ? ` · ${agent.description}` : ""}
           </div>
-        )}
+        ) : null}
       </div>
 
       <DropdownMenu>

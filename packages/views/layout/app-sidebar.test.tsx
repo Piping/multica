@@ -301,7 +301,7 @@ describe("workspace-switcher dropdown per-workspace dot", () => {
   });
 });
 
-describe("personal nav — Chat", () => {
+describe("personal nav — Agent", () => {
   beforeEach(() => {
     chatSessions.current = [];
     inboxItems.current = [];
@@ -317,31 +317,29 @@ describe("personal nav — Chat", () => {
   const chatBadge = (container: HTMLElement) =>
     chatNav(container)?.querySelector("number-flow-react") ?? null;
 
-  it("keeps persistent Inbox and Chat counters static", () => {
-    inboxItems.current = [{ id: "inbox-1", read: false }];
+  it("keeps the persistent Agent counter static", () => {
     chatSessions.current = [{ id: "chat-1", unread_count: 2 }];
     const { container } = render(<AppSidebar />);
-    const inboxBadge = container
-      .querySelector<HTMLElement>('button[data-href="/acme/inbox"]')
-      ?.querySelector("number-flow-react") as (HTMLElement & { animated?: boolean }) | null;
     const currentChatBadge = chatBadge(container) as (HTMLElement & { animated?: boolean }) | null;
 
-    expect(inboxBadge?.animated).toBe(false);
     expect(currentChatBadge?.animated).toBe(false);
   });
 
-  it("renders a Chat nav link to the workspace chat route", () => {
+  it("renders one Agent nav link and removes the old personal entries", () => {
     const { container } = render(<AppSidebar />);
     expect(chatNav(container)).not.toBeNull();
+    expect(container.querySelectorAll('button[data-href="/acme/chat"]')).toHaveLength(1);
+    expect(container.querySelector('button[data-href="/acme/inbox"]')).toBeNull();
+    expect(container.querySelector('button[data-href="/acme/my-issues"]')).toBeNull();
   });
 
-  it("badges the Chat nav with the summed unread_count of chat sessions", () => {
+  it("badges the Agent nav with the summed unread_count of chat sessions", () => {
     chatSessions.current = [{ id: "a", unread_count: 3 }, { id: "b", unread_count: 2 }, { id: "c", unread_count: 0 }];
     const { container } = render(<AppSidebar />);
     expect(chatBadge(container)).toHaveAttribute("aria-label", "5");
   });
 
-  it("shows no Chat unread badge when every session is read", () => {
+  it("shows no Agent unread badge when every session is read", () => {
     chatSessions.current = [{ id: "a", unread_count: 0 }, { id: "b" }];
     const { container } = render(<AppSidebar />);
     expect(chatBadge(container)).toBeNull();

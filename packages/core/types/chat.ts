@@ -73,6 +73,12 @@ export interface ChatSession {
   id: string;
   workspace_id: string;
   agent_id: string;
+  /** Execution runtime selected for a direct-runtime session. Also populated
+   *  for agent-backed sessions by newer servers. */
+  runtime_id?: string | null;
+  /** True when the session was started directly from a runtime and agent_id
+   *  points to an internal execution carrier. */
+  runtime_direct?: boolean;
   creator_id: string;
   /** Durable project context for every turn in this session. Null when the
    *  conversation uses workspace context only; optional for older servers. */
