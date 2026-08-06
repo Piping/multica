@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multica 产品架构与代码映射</title>
+    <style>
+      :root {
+        --bg: #f6eee4;
+        --paper: #fffdf9;
+        --ink: #163454;
+        --text: #29445f;
+        --muted: #6f7f90;
+        --line: #e7d9c9;
+        --red: #d94b3a;
+        --blue: #2f6ea5;
+        --green: #2f8f69;
+        --gold: #d39a45;
+        --purple: #7151a8;
+        --shadow: 0 18px 48px rgba(45, 52, 64, 0.09);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(255, 255, 255, 0.68), transparent 28%),
+          linear-gradient(180deg, #f8f0e8 0%, #f3e8db 100%);
+      }
+
+      .page {
+        width: min(1120px, calc(100vw - 28px));
+        margin: 0 auto;
+        padding: 34px 18px 52px;
+      }
+
+      .hero {
+        text-align: center;
+        padding: 6px 18px 24px;
+      }
+
+      .hero h1 {
+        margin: 0;
+        color: var(--ink);
+        font-family: "Georgia", "Times New Roman", "Songti SC", serif;
+        font-size: clamp(38px, 5vw, 64px);
+        line-height: 1.06;
+      }
+
+      .hero .sub-cn {
+        margin-top: 12px;
+        font-size: clamp(17px, 2vw, 24px);
+        font-weight: 700;
+      }
+
+      .hero .sub-en {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .hero .meta {
+        display: inline-flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 18px;
+        padding: 9px 18px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #efe6fb, #f7e7ec);
+        color: #6a557b;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .hero .source {
+        margin-top: 12px;
+        color: #7f807c;
+        font-size: 12px;
+      }
+
+      .section {
+        position: relative;
+        margin-top: 24px;
+        padding: 22px 22px 20px;
+        background: rgba(255, 253, 249, 0.94);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+      }
+
+      .section-number {
+        position: absolute;
+        top: -14px;
+        left: 16px;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 3px solid rgba(255, 255, 255, 0.96);
+        color: #fff;
+        font-size: 16px;
+        font-weight: 900;
+        background: var(--red);
+        box-shadow: 0 8px 18px rgba(217, 75, 58, 0.28);
+      }
+
+      .section-number.blue {
+        background: #2d81a9;
+        box-shadow: 0 8px 18px rgba(45, 129, 169, 0.24);
+      }
+
+      .section-number.green {
+        background: #2f8f69;
+        box-shadow: 0 8px 18px rgba(47, 143, 105, 0.24);
+      }
+
+      .section-number.gold {
+        background: #d18a38;
+        box-shadow: 0 8px 18px rgba(209, 138, 56, 0.26);
+      }
+
+      .section-number.purple {
+        background: var(--purple);
+        box-shadow: 0 8px 18px rgba(113, 81, 168, 0.26);
+      }
+
+      h2 {
+        margin: 6px 0 8px;
+        color: var(--ink);
+        font-family: "Georgia", "Times New Roman", "Songti SC", serif;
+        font-size: clamp(28px, 3vw, 40px);
+        line-height: 1.15;
+      }
+
+      .desc {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.8;
+      }
+
+      .kpi-grid,
+      .card-grid,
+      .glossary-grid,
+      .flow-grid,
+      .read-grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .kpi-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .card-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .glossary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .flow-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .read-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .kpi,
+      .card,
+      .term,
+      .flow-step,
+      .read-card {
+        padding: 16px 16px 14px;
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+      }
+
+      .kpi .value {
+        color: var(--ink);
+        font-family: "Georgia", "Times New Roman", "Songti SC", serif;
+        font-size: clamp(26px, 3vw, 44px);
+        line-height: 1;
+      }
+
+      .kpi .label {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .card h3,
+      .read-card h3 {
+        margin: 0 0 10px;
+        color: var(--ink);
+        font-size: 20px;
+      }
+
+      .card p,
+      .read-card p,
+      .term p,
+      .flow-step p {
+        margin: 0;
+        line-height: 1.8;
+        font-size: 14px;
+      }
+
+      .term .name {
+        color: var(--ink);
+        font-size: 19px;
+        font-weight: 800;
+      }
+
+      .term .avoid {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .callout {
+        margin-top: 18px;
+        padding: 14px 16px;
+        border-left: 5px solid var(--red);
+        border-radius: 12px;
+        background: linear-gradient(90deg, rgba(255, 237, 232, 0.95), rgba(255, 245, 243, 0.95));
+        font-size: 14px;
+        line-height: 1.85;
+      }
+
+      .diagram {
+        display: grid;
+        grid-template-columns: 1.1fr 1fr 1.1fr;
+        gap: 16px;
+        align-items: center;
+        margin-top: 18px;
+      }
+
+      .node {
+        padding: 18px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.82);
+        min-height: 154px;
+      }
+
+      .node .tag {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #fff;
+      }
+
+      .tag.red {
+        background: var(--red);
+      }
+
+      .tag.blue {
+        background: var(--blue);
+      }
+
+      .tag.green {
+        background: var(--green);
+      }
+
+      .node h3 {
+        margin: 12px 0 8px;
+        color: var(--ink);
+        font-size: 22px;
+      }
+
+      .node ul {
+        margin: 0;
+        padding-left: 18px;
+        line-height: 1.8;
+        font-size: 14px;
+      }
+
+      .arrow-col {
+        display: grid;
+        gap: 14px;
+      }
+
+      .arrow {
+        padding: 12px 14px;
+        text-align: center;
+        border-radius: 14px;
+        border: 1px dashed #cfbea9;
+        background: rgba(247, 240, 231, 0.92);
+        font-size: 13px;
+        line-height: 1.7;
+        color: #6d6254;
+      }
+
+      table.mapping {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.82);
+      }
+
+      .mapping th,
+      .mapping td {
+        padding: 14px 14px;
+        border-bottom: 1px solid #eee2d5;
+        vertical-align: top;
+        text-align: left;
+        font-size: 14px;
+        line-height: 1.75;
+      }
+
+      .mapping th {
+        background: rgba(244, 236, 227, 0.92);
+        color: var(--ink);
+        font-size: 12px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .mapping tr:last-child td {
+        border-bottom: none;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 8px;
+        background: rgba(45, 110, 165, 0.1);
+        color: #28547d;
+        font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+        font-size: 12px;
+      }
+
+      .flow-step .index {
+        color: var(--red);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .summary-strip {
+        margin-top: 24px;
+        padding: 20px 22px;
+        border-radius: 22px;
+        background: linear-gradient(135deg, #173553, #2b5178);
+        color: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 20px 38px rgba(22, 53, 83, 0.24);
+      }
+
+      .summary-strip h2 {
+        margin: 0 0 8px;
+        color: #fff;
+        font-size: clamp(26px, 3vw, 38px);
+      }
+
+      .summary-strip p {
+        margin: 0;
+        line-height: 1.85;
+        font-size: 15px;
+      }
+
+      .footer-note {
+        margin-top: 14px;
+        color: #7b7a75;
+        text-align: center;
+        font-size: 12px;
+        line-height: 1.7;
+      }
+
+      @media (max-width: 920px) {
+        .kpi-grid,
+        .card-grid,
+        .glossary-grid,
+        .flow-grid,
+        .read-grid,
+        .diagram {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .arrow-col {
+          grid-column: 1 / -1;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .page {
+          width: min(100vw - 18px, 1120px);
+          padding: 24px 9px 36px;
+        }
+
+        .section {
+          padding: 20px 16px 18px;
+        }
+
+        .kpi-grid,
+        .card-grid,
+        .glossary-grid,
+        .flow-grid,
+        .read-grid,
+        .diagram {
+          grid-template-columns: 1fr;
+        }
+
+        .mapping {
+          display: block;
+          overflow-x: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <h1>Multica 产品架构与代码映射</h1>
+        <div class="sub-cn">从产品术语到 monorepo 落点，一页看清这套系统到底是怎么组织的</div>
+        <div class="sub-en">Product concepts first, repository mapping second.</div>
+        <div class="meta">
+          <span>2026-06-09 快照</span>
+          <span>产品概念主轴</span>
+          <span>代码模块映射为辅</span>
+          <span>单页长图式说明</span>
+        </div>
+        <div class="source">
+          Grounded in README.md, docs/product-overview.md, apps/docs content, CLAUDE.md, apps/mobile/README.md
+        </div>
+      </header>
+
+      <section class="section">
+        <div class="section-number">1</div>
+        <h2>先抓主轴：Multica 不是单个 Web App，而是一套把 Agent 纳入工作流的分布式系统</h2>
+        <p class="desc">
+          如果只记一句话：<strong>Multica 把 AI agent 变成工作区里的正式成员</strong>。Issue、评论、Inbox、项目、技能、Autopilot
+          都围绕这个前提组织，而不是围绕“临时调用一次模型”组织。
+        </p>
+
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="value">1</div>
+            <div class="label">Go 后端<br />统一承载 API、任务生命周期、实时推送</div>
+          </div>
+          <div class="kpi">
+            <div class="value">4</div>
+            <div class="label">客户端应用<br />Web、Desktop、Mobile、Docs</div>
+          </div>
+          <div class="kpi">
+            <div class="value">5</div>
+            <div class="label">共享包<br /><code>core</code>、<code>ui</code>、<code>views</code>、<code>tsconfig</code>、<code>eslint-config</code></div>
+          </div>
+          <div class="kpi">
+            <div class="value">N</div>
+            <div class="label">本地 AI 编程工具<br />由 daemon 探测并注册成 runtime</div>
+          </div>
+        </div>
+
+        <div class="diagram">
+          <div class="node">
+            <span class="tag red">Control Plane</span>
+            <h3>Multica Server</h3>
+            <ul>
+              <li>保存工作区、Issue、Agent、Task、Skill 等产品数据</li>
+              <li>提供 HTTP API 与 WebSocket 实时广播</li>
+              <li>负责任务入队、认领、完成、失败等生命周期</li>
+              <li><strong>不直接运行 Agent</strong></li>
+            </ul>
+          </div>
+
+          <div class="arrow-col">
+            <div class="arrow">HTTP / WebSocket<br />浏览器、桌面端、移动端都连这里</div>
+            <div class="arrow">任务轮询 / 心跳 / 回传结果<br />daemon 与 server 持续同步状态</div>
+          </div>
+
+          <div class="node">
+            <span class="tag blue">Execution Plane</span>
+            <h3>Daemon + AI Coding Tool</h3>
+            <ul>
+              <li>daemon 跑在用户机器上，发现本地可用的 AI 编程工具</li>
+              <li>AI coding tool 真正读代码、写代码、跑命令、发评论</li>
+              <li>API key、代码目录、工具授权尽量留在本地</li>
+              <li>runtime 是产品里的“可用执行槽位”</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="callout">
+          <strong>最重要的产品边界：</strong>
+          Multica 的 server 管任务与协作状态，<strong>agent 的执行发生在 runtime 上</strong>。这也是它和传统工单系统、以及单次对话式 AI 工具的根本区别。
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-number blue">2</div>
+        <h2>Multica 术语表</h2>
+        <p class="desc">
+          仓库有长版的 <code>docs/product-overview.md</code>，但真正指导代码讨论的应该是短而硬的词汇表。这里按最新
+          <code>CONTEXT.md</code> 重排，优先收紧最容易被混用的概念。
+        </p>
+
+        <div class="glossary-grid">
+          <div class="term">
+            <div class="name">Workspace</div>
+            <p>一切资源的顶层容器。Issue、Agent、Skill、Project、Member 都在这个边界内隔离。</p>
+            <div class="avoid">Avoid: team, org, tenant</div>
+          </div>
+          <div class="term">
+            <div class="name">Member</div>
+            <p>用户在某个 workspace 里的身份与角色，而不是全局账号本身。</p>
+            <div class="avoid">Avoid: user, teammate</div>
+          </div>
+          <div class="term">
+            <div class="name">Agent</div>
+            <p>可被分配工作的 AI 成员，会在工作区里发评论、接任务、参与协作，不只是一次性模型调用。</p>
+            <div class="avoid">Avoid: bot, model</div>
+          </div>
+          <div class="term">
+            <div class="name">Squad</div>
+            <p>由 agent 领导的路由组。工作可以先分给 squad，再由 leader 决定谁真正接手。</p>
+            <div class="avoid">Avoid: team, queue</div>
+          </div>
+          <div class="term">
+            <div class="name">Issue</div>
+            <p>Multica 的核心工作对象。人和 agent 都围绕它协作。</p>
+            <div class="avoid">Avoid: task, ticket</div>
+          </div>
+          <div class="term">
+            <div class="name">Project</div>
+            <p>Issue 的高层组织容器，用于聚合多个工作项的共同目标。</p>
+            <div class="avoid">Avoid: epic, milestone</div>
+          </div>
+          <div class="term">
+            <div class="name">Project Resource</div>
+            <p>挂在项目上的仓库、目录或其他上下文引用，让 agent 在项目内执行工作时拿到额外背景。</p>
+            <div class="avoid">Avoid: attachment, runtime</div>
+          </div>
+          <div class="term">
+            <div class="name">Chat Session</div>
+            <p>Issue 外的持久一对一对话，和 Issue 线程不是一回事。</p>
+            <div class="avoid">Avoid: issue thread, task</div>
+          </div>
+          <div class="term">
+            <div class="name">Inbox Item</div>
+            <p>围绕 issue 活动形成的个人 attention 条目，不等于所有系统状态变化都会进这里。</p>
+            <div class="avoid">Avoid: generic alert, message</div>
+          </div>
+          <div class="term">
+            <div class="name">Task</div>
+            <p>一次 agent 执行记录。它是“agent 开跑的那次实例”，不是长期存在的工作项。</p>
+            <div class="avoid">Avoid: issue, job</div>
+          </div>
+          <div class="term">
+            <div class="name">Daemon</div>
+            <p>本地后台进程，负责注册 runtime、领任务、启动 AI coding tool、回传结果。</p>
+            <div class="avoid">Avoid: agent, runtime</div>
+          </div>
+          <div class="term">
+            <div class="name">AI Coding Tool</div>
+            <p>真正执行工作的本地 CLI，例如 Claude Code、Codex。它不是 runtime，也不是 agent 本身。</p>
+            <div class="avoid">Avoid: model, provider</div>
+          </div>
+          <div class="term">
+            <div class="name">Runtime</div>
+            <p>Agent 真正执行任务的槽位。今天它是 workspace 内 “daemon × 一个 AI coding tool” 的组合。</p>
+            <div class="avoid">Avoid: server, machine</div>
+          </div>
+          <div class="term">
+            <div class="name">Skill</div>
+            <p>给 agent 的可复用知识包，用来沉淀做事方法，不等于一次性 prompt。</p>
+            <div class="avoid">Avoid: prompt, template</div>
+          </div>
+          <div class="term">
+            <div class="name">Workspace Context</div>
+            <p>工作区范围的统一指令，会影响该 workspace 里 agent 的工作方式。</p>
+            <div class="avoid">Avoid: global prompt, org policy</div>
+          </div>
+          <div class="term">
+            <div class="name">Autopilot</div>
+            <p>按时间或 webhook 触发的自动化入口，会为 agent 创建或派发工作。</p>
+            <div class="avoid">Avoid: cron job, bot rule</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-number green">3</div>
+        <h2>概念到代码的主映射：产品对象落在哪些模块</h2>
+        <p class="desc">
+          这部分不是完整调用图，而是“从一个产品概念出发，该先看哪几层代码”。推荐先沿概念读，再下钻到实现。
+        </p>
+
+        <table class="mapping">
+          <thead>
+            <tr>
+              <th>产品概念</th>
+              <th>后端落点</th>
+              <th>共享逻辑</th>
+              <th>UI / 路由落点</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Workspace / Member</strong></td>
+              <td><code>server/internal/handler/workspace.go</code><br /><code>server/internal/handler/invitation.go</code></td>
+              <td><code>packages/core/workspace</code><br /><code>packages/core/permissions</code></td>
+              <td><code>packages/views/workspace</code><br /><code>apps/web/app/[workspaceSlug]</code><br /><code>apps/mobile/app/(app)/[workspace]</code></td>
+            </tr>
+            <tr>
+              <td><strong>Issue / Comment / Timeline / Inbox</strong></td>
+              <td><code>issue.go</code>, <code>comment.go</code>, <code>inbox.go</code>, <code>activity.go</code></td>
+              <td><code>packages/core/issues</code><br /><code>packages/core/inbox</code></td>
+              <td><code>packages/views/issues</code><br /><code>packages/views/inbox</code><br /><code>apps/mobile/components/issue</code></td>
+            </tr>
+            <tr>
+              <td><strong>Agent / Runtime / Daemon / Task</strong></td>
+              <td><code>agent.go</code>, <code>runtime.go</code>, <code>daemon.go</code>, <code>task_lifecycle.go</code></td>
+              <td><code>packages/core/agents</code><br /><code>packages/core/runtimes</code><br /><code>packages/core/realtime</code></td>
+              <td><code>packages/views/agents</code><br /><code>packages/views/runtimes</code><br /><code>apps/docs/content/docs/daemon-runtimes*.mdx</code></td>
+            </tr>
+            <tr>
+              <td><strong>Skill / Workspace Context / Project Resource</strong></td>
+              <td><code>skill.go</code>, <code>runtime_local_skills.go</code></td>
+              <td><code>packages/core/config</code><br /><code>packages/core/types</code></td>
+              <td><code>packages/views/skills</code><br /><code>apps/docs/content/docs/skills*.mdx</code></td>
+            </tr>
+            <tr>
+              <td><strong>Autopilot / Webhook</strong></td>
+              <td><code>autopilot.go</code><br /><code>autopilot_webhook.go</code></td>
+              <td><code>packages/core/autopilots</code></td>
+              <td><code>packages/views/autopilots</code><br /><code>apps/docs/content/docs/autopilots*.mdx</code></td>
+            </tr>
+            <tr>
+              <td><strong>Chat</strong></td>
+              <td><code>server/internal/handler/chat.go</code></td>
+              <td><code>packages/core/chat</code></td>
+              <td><code>packages/views/chat</code><br /><code>apps/mobile/app/(app)/[workspace]/(tabs)/chat.tsx</code></td>
+            </tr>
+            <tr>
+              <td><strong>Client surfaces</strong></td>
+              <td>API 与事件由 server 统一提供</td>
+              <td><code>packages/core</code> + <code>packages/ui</code> + <code>packages/views</code></td>
+              <td><code>apps/web</code>, <code>apps/desktop</code>, <code>apps/mobile</code>, <code>apps/docs</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <div class="section-number gold">4</div>
+        <h2>Monorepo 的真实分层：不是“前后端”两层，而是“控制面 + 客户端 + 共享业务层”</h2>
+        <p class="desc">
+          这个仓库最值得记住的不是目录名，而是边界：<code>packages/core</code> 负责业务逻辑，<code>packages/ui</code> 负责纯 UI，
+          <code>packages/views</code> 负责共享业务页面；Web 与 Desktop 共享这三层，Mobile 只共享类型和纯函数。
+        </p>
+
+        <div class="card-grid">
+          <div class="card">
+            <h3><code>server/</code> 控制面</h3>
+            <p>Go 后端负责数据模型、权限、实时事件、任务队列、CLI/daemon 命令入口。它定义“产品怎样运作”。</p>
+          </div>
+          <div class="card">
+            <h3><code>apps/web</code> / <code>apps/desktop</code></h3>
+            <p>两端共享大多数业务视图，只在平台 API、壳层能力、路由接线处各自分化。</p>
+          </div>
+          <div class="card">
+            <h3><code>apps/mobile</code></h3>
+            <p>移动端是独立客户端，不直接复用 Web/Desktop 的业务层实现，只共享 <code>@multica/core</code> 的类型和少量纯函数。</p>
+          </div>
+          <div class="card">
+            <h3><code>packages/core</code></h3>
+            <p>查询、变更、缓存键、Zustand store、路径与平台无关逻辑。它是“产品行为”的主要共享层。</p>
+          </div>
+          <div class="card">
+            <h3><code>packages/ui</code> / <code>packages/views</code></h3>
+            <p><code>ui</code> 只放原子组件；<code>views</code> 组织页面与业务组件，但不依赖 Next.js 或 React Router。</p>
+          </div>
+          <div class="card">
+            <h3><code>apps/docs</code></h3>
+            <p>文档站已经拥有很完整的产品说明体系，这次 HTML 更像一份“压缩版总览图”，不是从零写新知识。</p>
+          </div>
+        </div>
+
+        <div class="callout">
+          <strong>读代码的一个高收益顺序：</strong>
+          先从 <code>docs/product-overview.md</code> 和 docs 站定义产品对象，再去 <code>packages/core/&lt;domain&gt;</code> 看状态与 API，再看
+          <code>packages/views/&lt;domain&gt;</code> 或各端入口如何呈现。这样不会一上来就迷失在实现细节里。
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-number purple">5</div>
+        <h2>一条工作如何穿过系统：从 Issue 指派到 Agent 回报</h2>
+        <p class="desc">
+          这个流程最能说明 Multica 的产品心智模型：<strong>Issue 是工作单，Task 是执行记录，Runtime 是执行地点，Comment / Timeline 是稳定协作回路，Inbox 只覆盖其中一部分 attention 信号</strong>。
+        </p>
+
+        <div class="flow-grid">
+          <div class="flow-step">
+            <div class="index">Step 01</div>
+            <h3>创建或更新 Issue</h3>
+            <p>用户在 Web / Desktop / Mobile 上创建 issue，或把已有 issue 分配给 agent。</p>
+          </div>
+          <div class="flow-step">
+            <div class="index">Step 02</div>
+            <h3>后端入队 Task</h3>
+            <p>server 改写 issue assignee，并创建一条 agent task，状态先进入 <code>queued</code>。</p>
+          </div>
+          <div class="flow-step">
+            <div class="index">Step 03</div>
+            <h3>Daemon 认领执行</h3>
+            <p>daemon 轮询到这条任务，在本地 runtime 上启动对应 AI coding tool，任务变成 <code>running</code>。</p>
+          </div>
+          <div class="flow-step">
+            <div class="index">Step 04</div>
+            <h3>Agent 本地工作</h3>
+            <p>AI coding tool 读仓库、改代码、跑命令、生成评论或更新状态；Skill 和 workspace context 在这里生效。</p>
+          </div>
+          <div class="flow-step">
+            <div class="index">Step 05</div>
+            <h3>结果回传 server</h3>
+            <p>完成、失败、评论、状态变化都回传给 Go 后端，落库并写入活动流。</p>
+          </div>
+          <div class="flow-step">
+            <div class="index">Step 06</div>
+            <h3>实时同步给所有客户端</h3>
+            <p>WebSocket 把变化推到 Web / Desktop / Mobile；Timeline、聊天窗口与 issue 状态变化会稳定体现执行结果，Inbox 只覆盖部分需要 attention 的场景。</p>
+          </div>
+        </div>
+
+        <div class="callout">
+          <strong>失败语义要单独记：</strong>
+          不是每一种失败都会进入 Inbox。按当前实际行为，Autopilot 失败更可靠的信号是
+          <strong>run history</strong> 与关联 issue 的状态变化；你这边确认的现象是<strong>没有失败通知，只是 issue 状态转到 block</strong>。
+          所以在产品分析里，不要把 Inbox 当成所有执行失败的统一出口。
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-number">6</div>
+        <h2>如果你是新协作者，应该怎样读这套仓库</h2>
+        <p class="desc">
+          这份 HTML 不是替代源码，而是提供一条进入源码的路径。下面这 4 步最省时间。
+        </p>
+
+        <div class="read-grid">
+          <div class="read-card">
+            <h3>01. 先看产品词</h3>
+            <p>读 <code>CONTEXT.md</code> 与 <code>docs/product-overview.md</code>，先区分 Issue、Task、Runtime、Daemon、Skill 的边界。</p>
+          </div>
+          <div class="read-card">
+            <h3>02. 再看共享业务层</h3>
+            <p>从 <code>packages/core</code> 进入目标领域，理解查询、变更、缓存键和 store 的结构。</p>
+          </div>
+          <div class="read-card">
+            <h3>03. 再看共享视图或端入口</h3>
+            <p>Web/Desktop 优先看 <code>packages/views</code>；移动端优先看 <code>apps/mobile</code> 自己的实现。</p>
+          </div>
+          <div class="read-card">
+            <h3>04. 最后回到 server</h3>
+            <p>需要确认事实来源、权限或任务生命周期时，再下钻 <code>server/internal/handler</code> 与 <code>server/internal/service</code>。</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="summary-strip">
+        <h2>一句话总结</h2>
+        <p>
+          <strong>Multica 的产品核心不是“聊天”也不是“工单”，而是把 agent 变成工作区里的正式执行者，并把执行留在用户自己的 runtime 上。</strong>
+          这套代码库的正确阅读方式是从产品对象与术语出发，顺着共享业务层找到各客户端表现.
+        </p>
+      </div>
+
+      <div class="footer-note">
+        This page is a compact HTML explainer generated from the current repository snapshot. For fuller source material, start with
+        <code>docs/product-overview.md</code>, <code>README.md</code>, <code>CLAUDE.md</code>, and the docs site content under
+        <code>apps/docs/content/docs/</code>.
+      </div>
+    </div>
+  </body>
+</html>
