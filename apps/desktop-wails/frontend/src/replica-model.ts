@@ -16,7 +16,9 @@ export interface RestoredReplicaEntry {
 }
 
 export interface ReplicaScope {
+  userId: string;
   workspaceId: string;
+  agentIds: ReadonlySet<string>;
   issueIds: ReadonlySet<string>;
   chatSessionIds: ReadonlySet<string>;
 }
@@ -63,7 +65,7 @@ export function isReplicableQuery(
   data: unknown,
   scope: ReplicaScope,
 ): boolean {
-  const { workspaceId, issueIds, chatSessionIds } = scope;
+  const { userId, workspaceId, agentIds, issueIds, chatSessionIds } = scope;
 
   if (
     queryKey[1] === workspaceId &&
@@ -207,12 +209,27 @@ export function isReplicableQuery(
     if (
       queryKey[2] === "members" ||
       queryKey[2] === "agents" ||
-      queryKey[2] === "squads"
+      queryKey[2] === "squads" ||
+      queryKey[2] === "skills"
     ) {
-      return isWorkspaceRecordArray(data, workspaceId);
+      return isWorkspaceEntityArray(data, workspaceId);
     }
     if (queryKey[2] === "assignee-frequency") {
       return isAssigneeFrequency(data);
+    }
+  }
+
+  if (
+    queryKey[0] === "workspaces" &&
+    queryKey[1] === workspaceId &&
+    queryKey.length === 4 &&
+    queryKey[3] === "30d"
+  ) {
+    if (queryKey[2] === "agent-activity") {
+      return isAgentActivity(data, agentIds);
+    }
+    if (queryKey[2] === "agent-run-counts") {
+      return isAgentRunCounts(data, agentIds);
     }
   }
 
@@ -263,6 +280,32 @@ export function isReplicableQuery(
     typeof queryKey[3] === "boolean"
   ) {
     return isWorkspaceCollection(data, "properties", workspaceId);
+  }
+
+  if (
+    queryKey[0] === "pins" &&
+    queryKey[1] === workspaceId &&
+    queryKey[2] === userId &&
+    queryKey[3] === "list" &&
+    queryKey.length === 4
+  ) {
+    return isPinnedItemList(data, workspaceId, userId);
+  }
+
+  if (
+    queryKey.length === 3 &&
+    queryKey[1] === workspaceId &&
+    queryKey[2] === "list"
+  ) {
+    if (queryKey[0] === "autopilots") {
+      return isWorkspaceEntityCollection(data, "autopilots", workspaceId);
+    }
+    if (
+      queryKey[0] === "runtimes" ||
+      queryKey[0] === "runtime-profiles"
+    ) {
+      return isWorkspaceEntityArray(data, workspaceId);
+    }
   }
 
   return false;
@@ -327,7 +370,14 @@ export function isReplicaQueryKey(
       (queryKey[2] === "members" ||
         queryKey[2] === "agents" ||
         queryKey[2] === "squads" ||
+        queryKey[2] === "skills" ||
         queryKey[2] === "assignee-frequency")) ||
+    (queryKey[0] === "workspaces" &&
+      queryKey[1] === workspaceId &&
+      queryKey.length === 4 &&
+      (queryKey[2] === "agent-activity" ||
+        queryKey[2] === "agent-run-counts") &&
+      queryKey[3] === "30d") ||
     (queryKey[0] === "quick-actions" &&
       queryKey[1] === workspaceId &&
       queryKey.length === 4 &&
@@ -347,19 +397,33 @@ export function isReplicaQueryKey(
       queryKey[1] === workspaceId &&
       queryKey.length === 4 &&
       queryKey[2] === "list" &&
-      typeof queryKey[3] === "boolean")
+      typeof queryKey[3] === "boolean") ||
+    (queryKey[0] === "pins" &&
+      queryKey[1] === workspaceId &&
+      typeof queryKey[2] === "string" &&
+      queryKey[3] === "list" &&
+      queryKey.length === 4) ||
+    (queryKey.length === 3 &&
+      queryKey[1] === workspaceId &&
+      queryKey[2] === "list" &&
+      (queryKey[0] === "autopilots" ||
+        queryKey[0] === "runtimes" ||
+        queryKey[0] === "runtime-profiles"))
   );
 }
 
 export function discoverReplicaScope(
   candidates: Iterable<ReplicaCandidate>,
   workspaceId: string,
+  userId: string,
 ): ReplicaScope {
   const allCandidates = [...candidates];
+  const agentIds = new Set<string>();
   const issueIds = new Set<string>();
   const chatSessionIds = new Set<string>();
 
   for (const { queryKey, data } of allCandidates) {
+    collectAgentIds(queryKey, data, workspaceId, agentIds);
     collectChatSessionIds(queryKey, data, workspaceId, chatSessionIds);
     collectIssueIds(queryKey, data, workspaceId, issueIds);
   }
@@ -374,12 +438,13 @@ export function discoverReplicaScope(
     }
   }
 
-  return { workspaceId, issueIds, chatSessionIds };
+  return { userId, workspaceId, agentIds, issueIds, chatSessionIds };
 }
 
 export function discoverReplicaScopeFromEntries(
   entries: ReplicaEntry[],
   workspaceId: string,
+  userId: string,
 ): ReplicaScope {
   const candidates: ReplicaCandidate[] = [];
   for (const entry of entries) {
@@ -393,7 +458,7 @@ export function discoverReplicaScopeFromEntries(
       // The restore pass deletes malformed rows after scope discovery.
     }
   }
-  return discoverReplicaScope(candidates, workspaceId);
+  return discoverReplicaScope(candidates, workspaceId, userId);
 }
 
 function collectChatSessionIds(
@@ -420,6 +485,24 @@ function collectChatSessionIds(
       target.add(session.id);
     }
   }
+}
+
+function collectAgentIds(
+  queryKey: readonly unknown[],
+  data: unknown,
+  workspaceId: string,
+  target: Set<string>,
+): void {
+  if (
+    queryKey[0] !== "workspaces" ||
+    queryKey[1] !== workspaceId ||
+    queryKey[2] !== "agents" ||
+    queryKey.length !== 3 ||
+    !isWorkspaceEntityArray(data, workspaceId)
+  ) {
+    return;
+  }
+  for (const agent of data) target.add(agent.id);
 }
 
 function collectIssueIds(
@@ -750,6 +833,42 @@ function isAssigneeFrequency(value: unknown): boolean {
   );
 }
 
+function isAgentActivity(
+  value: unknown,
+  agentIds: ReadonlySet<string>,
+): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.agent_id === "string" &&
+        agentIds.has(entry.agent_id) &&
+        typeof entry.bucket_at === "string" &&
+        entry.bucket_at.length > 0 &&
+        isNonNegativeInteger(entry.task_count) &&
+        isNonNegativeInteger(entry.failed_count) &&
+        (entry.failed_count as number) <= (entry.task_count as number),
+    )
+  );
+}
+
+function isAgentRunCounts(
+  value: unknown,
+  agentIds: ReadonlySet<string>,
+): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.agent_id === "string" &&
+        agentIds.has(entry.agent_id) &&
+        isNonNegativeInteger(entry.run_count),
+    )
+  );
+}
+
 function isWorkspaceCollection(
   value: unknown,
   field: string,
@@ -762,14 +881,65 @@ function isWorkspaceCollection(
   );
 }
 
-function isWorkspaceRecordArray(
+function isWorkspaceEntityCollection(
   value: unknown,
+  field: string,
   workspaceId: string,
 ): boolean {
   return (
-    Array.isArray(value) &&
-    value.every((entry) => isWorkspaceRecord(entry, workspaceId))
+    isRecord(value) &&
+    isWorkspaceEntityArray(value[field], workspaceId)
   );
+}
+
+function isWorkspaceEntityArray(
+  value: unknown,
+  workspaceId: string,
+): value is Array<Record<string, unknown> & { id: string }> {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isWorkspaceRecord(entry, workspaceId) &&
+        typeof entry.id === "string" &&
+        entry.id.length > 0,
+    )
+  );
+}
+
+function isPinnedItemList(
+  value: unknown,
+  workspaceId: string,
+  userId: string,
+): boolean {
+  if (!Array.isArray(value)) return false;
+
+  const ids = new Set<string>();
+  const targets = new Set<string>();
+  for (const pin of value) {
+    if (
+      !isWorkspaceRecord(pin, workspaceId) ||
+      pin.user_id !== userId ||
+      typeof pin.id !== "string" ||
+      pin.id.length === 0 ||
+      (pin.item_type !== "issue" && pin.item_type !== "project") ||
+      typeof pin.item_id !== "string" ||
+      pin.item_id.length === 0 ||
+      typeof pin.position !== "number" ||
+      !Number.isFinite(pin.position) ||
+      pin.position < 0 ||
+      typeof pin.created_at !== "string" ||
+      pin.created_at.length === 0
+    ) {
+      return false;
+    }
+
+    const target = `${pin.item_type}:${pin.item_id}`;
+    if (ids.has(pin.id) || targets.has(target)) return false;
+    ids.add(pin.id);
+    targets.add(target);
+  }
+  return true;
 }
 
 function isIssueTableQuery(

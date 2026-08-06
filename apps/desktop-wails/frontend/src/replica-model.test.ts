@@ -10,13 +10,18 @@ import {
 } from "./replica-model";
 
 const workspaceId = "workspace-1";
+const userId = "user-1";
 const emptyScope: ReplicaScope = {
+  userId,
   workspaceId,
+  agentIds: new Set(),
   issueIds: new Set(),
   chatSessionIds: new Set(),
 };
 const issueScope: ReplicaScope = {
+  userId,
   workspaceId,
+  agentIds: new Set(),
   issueIds: new Set(["issue-1"]),
   chatSessionIds: new Set(),
 };
@@ -53,6 +58,39 @@ describe("restoreReplicaEntry", () => {
       data,
       dataJson: JSON.stringify(data),
       updatedAt: 100,
+    });
+  });
+
+  it("restores the current user's sidebar pins", () => {
+    const queryKey = ["pins", workspaceId, userId, "list"];
+    const data = [
+      {
+        id: "pin-1",
+        workspace_id: workspaceId,
+        user_id: userId,
+        item_type: "issue",
+        item_id: "issue-1",
+        position: 0,
+        created_at: "2026-08-06T00:00:00Z",
+      },
+    ];
+
+    expect(
+      restoreReplicaEntry(
+        {
+          queryHash: hashKey(queryKey),
+          queryKeyJson: JSON.stringify(queryKey),
+          dataJson: JSON.stringify(data),
+          updatedAt: 101,
+        },
+        emptyScope,
+      ),
+    ).toEqual({
+      queryHash: hashKey(queryKey),
+      queryKey,
+      data,
+      dataJson: JSON.stringify(data),
+      updatedAt: 101,
     });
   });
 
@@ -575,6 +613,177 @@ describe("isReplicableQuery", () => {
     ).toBe(true);
   });
 
+  it("accepts the current user's scoped sidebar pins", () => {
+    expect(
+      isReplicableQuery(
+        ["pins", workspaceId, userId, "list"],
+        [
+          {
+            id: "pin-1",
+            workspace_id: workspaceId,
+            user_id: userId,
+            item_type: "issue",
+            item_id: "issue-1",
+            position: 0,
+            created_at: "2026-08-06T00:00:00Z",
+          },
+          {
+            id: "pin-2",
+            workspace_id: workspaceId,
+            user_id: userId,
+            item_type: "project",
+            item_id: "project-1",
+            position: 1.5,
+            created_at: "2026-08-06T00:01:00Z",
+          },
+        ],
+        emptyScope,
+      ),
+    ).toBe(true);
+  });
+
+  it("accepts lightweight catalogs opened from sidebar navigation", () => {
+    for (const [queryKey, data] of [
+      [
+        ["workspaces", workspaceId, "skills"],
+        [{ id: "skill-1", workspace_id: workspaceId, name: "Review" }],
+      ],
+      [
+        ["autopilots", workspaceId, "list"],
+        {
+          autopilots: [
+            {
+              id: "autopilot-1",
+              workspace_id: workspaceId,
+              title: "Triage",
+            },
+          ],
+        },
+      ],
+      [
+        ["runtimes", workspaceId, "list"],
+        [{ id: "runtime-1", workspace_id: workspaceId, name: "Mac mini" }],
+      ],
+      [
+        ["runtime-profiles", workspaceId, "list"],
+        [{ id: "profile-1", workspace_id: workspaceId, display_name: "Codex" }],
+      ],
+    ] as const) {
+      expect(isReplicableQuery(queryKey, data, emptyScope)).toBe(true);
+    }
+  });
+
+  it("rejects malformed or cross-workspace sidebar catalogs", () => {
+    expect(
+      isReplicableQuery(
+        ["runtimes", workspaceId, "list"],
+        [{ id: "runtime-1", workspace_id: "workspace-2" }],
+        emptyScope,
+      ),
+    ).toBe(false);
+    expect(
+      isReplicableQuery(
+        ["workspaces", workspaceId, "skills"],
+        [{ workspace_id: workspaceId, name: "Missing id" }],
+        emptyScope,
+      ),
+    ).toBe(false);
+    expect(
+      isReplicableQuery(
+        ["runtimes", workspaceId, "list", "mine"],
+        [{ id: "runtime-1", workspace_id: workspaceId }],
+        emptyScope,
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts agent list summaries only for trusted workspace agents", () => {
+    const scope = { ...emptyScope, agentIds: new Set(["agent-1"]) };
+    expect(
+      isReplicableQuery(
+        ["workspaces", workspaceId, "agent-activity", "30d"],
+        [
+          {
+            agent_id: "agent-1",
+            bucket_at: "2026-08-06T00:00:00Z",
+            task_count: 4,
+            failed_count: 1,
+          },
+        ],
+        scope,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicableQuery(
+        ["workspaces", workspaceId, "agent-run-counts", "30d"],
+        [{ agent_id: "agent-1", run_count: 7 }],
+        scope,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicableQuery(
+        ["workspaces", workspaceId, "agent-run-counts", "30d"],
+        [{ agent_id: "agent-2", run_count: 7 }],
+        scope,
+      ),
+    ).toBe(false);
+    expect(
+      isReplicableQuery(
+        ["workspaces", workspaceId, "agent-activity", "30d"],
+        [
+          {
+            agent_id: "agent-1",
+            bucket_at: "2026-08-06T00:00:00Z",
+            task_count: 1,
+            failed_count: 2,
+          },
+        ],
+        scope,
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects cross-user, cross-workspace, and malformed sidebar pins", () => {
+    const pin = {
+      id: "pin-1",
+      workspace_id: workspaceId,
+      user_id: userId,
+      item_type: "issue",
+      item_id: "issue-1",
+      position: 0,
+      created_at: "2026-08-06T00:00:00Z",
+    };
+
+    expect(
+      isReplicableQuery(
+        ["pins", workspaceId, "user-2", "list"],
+        [{ ...pin, user_id: "user-2" }],
+        emptyScope,
+      ),
+    ).toBe(false);
+    expect(
+      isReplicableQuery(
+        ["pins", workspaceId, userId, "list"],
+        [{ ...pin, workspace_id: "workspace-2" }],
+        emptyScope,
+      ),
+    ).toBe(false);
+    expect(
+      isReplicableQuery(
+        ["pins", workspaceId, userId, "list"],
+        [{ ...pin, item_type: "runtime" }],
+        emptyScope,
+      ),
+    ).toBe(false);
+    expect(
+      isReplicableQuery(
+        ["pins", workspaceId, userId, "list"],
+        [pin, { ...pin, id: "pin-2" }],
+        emptyScope,
+      ),
+    ).toBe(false);
+  });
+
   it("rejects cross-workspace side panel catalogs", () => {
     expect(
       isReplicableQuery(
@@ -700,6 +909,7 @@ describe("discoverReplicaScope", () => {
         },
       ],
       workspaceId,
+      userId,
     );
 
     expect([...scope.issueIds].sort()).toEqual([
@@ -708,6 +918,32 @@ describe("discoverReplicaScope", () => {
       "issue-3",
     ]);
     expect([...scope.chatSessionIds]).toEqual(["session-1"]);
+  });
+
+  it("discovers trusted agents independently of persisted row order", () => {
+    const scope = discoverReplicaScope(
+      [
+        {
+          queryKey: ["workspaces", workspaceId, "agent-run-counts", "30d"],
+          data: [{ agent_id: "agent-1", run_count: 3 }],
+        },
+        {
+          queryKey: ["workspaces", workspaceId, "agents"],
+          data: [{ id: "agent-1", workspace_id: workspaceId }],
+        },
+      ],
+      workspaceId,
+      userId,
+    );
+
+    expect([...scope.agentIds]).toEqual(["agent-1"]);
+    expect(
+      isReplicableQuery(
+        ["workspaces", workspaceId, "agent-run-counts", "30d"],
+        [{ agent_id: "agent-1", run_count: 3 }],
+        scope,
+      ),
+    ).toBe(true);
   });
 
   it("does not trust a tampered persisted scope seed", () => {
@@ -725,6 +961,7 @@ describe("discoverReplicaScope", () => {
         },
       ],
       workspaceId,
+      userId,
     );
     expect(scope.issueIds.size).toBe(0);
   });
@@ -733,7 +970,10 @@ describe("discoverReplicaScope", () => {
 describe("isReplicaQueryKey", () => {
   it("whitelists issue table and chat page replica keys", () => {
     expect(
-      isReplicaQueryKey(["issues", workspaceId, "list", {}], workspaceId),
+      isReplicaQueryKey(
+        ["issues", workspaceId, "list", {}],
+        workspaceId,
+      ),
     ).toBe(true);
     expect(
       isReplicaQueryKey(
@@ -742,10 +982,16 @@ describe("isReplicaQueryKey", () => {
       ),
     ).toBe(true);
     expect(
-      isReplicaQueryKey(["chat", workspaceId, "sessions"], workspaceId),
+      isReplicaQueryKey(
+        ["chat", workspaceId, "sessions"],
+        workspaceId,
+      ),
     ).toBe(true);
     expect(
-      isReplicaQueryKey(["chat", "messages", "session-1"], workspaceId),
+      isReplicaQueryKey(
+        ["chat", "messages", "session-1"],
+        workspaceId,
+      ),
     ).toBe(false);
     expect(
       isReplicaQueryKey(
@@ -804,6 +1050,60 @@ describe("isReplicaQueryKey", () => {
     expect(
       isReplicaQueryKey(
         ["projects", "workspace-2", "list"],
+        workspaceId,
+      ),
+    ).toBe(false);
+    expect(
+      isReplicaQueryKey(
+        ["pins", workspaceId, userId, "list"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["pins", workspaceId, "user-2", "list"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["workspaces", workspaceId, "skills"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["autopilots", workspaceId, "list"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["runtimes", workspaceId, "list"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["runtime-profiles", workspaceId, "list"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["workspaces", workspaceId, "agent-activity", "30d"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["workspaces", workspaceId, "agent-run-counts", "30d"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["runtimes", workspaceId, "list", "mine"],
         workspaceId,
       ),
     ).toBe(false);

@@ -50,6 +50,7 @@ export function ReplicaBoundary({
         const replicaScope = discoverReplicaScopeFromEntries(
           entries,
           workspaceId,
+          userId,
         );
         for (const entry of entries) {
           const restored = restoreReplicaEntry(entry, replicaScope);
@@ -114,78 +115,89 @@ export function ReplicaBoundary({
         queryHash: string;
       }
     >();
+    const lastQueued = new Map<
+      string,
+      { dataJson: string; updatedAt: number }
+    >();
 
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== "updated") return;
-      const { query } = event;
-      const { data, dataUpdatedAt, status } = query.state;
+      if (!isReplicaQueryKey(event.query.queryKey, workspaceId)) return;
+      const cachedQueries = queryClient.getQueryCache().getAll();
       const replicaScope = discoverReplicaScope(
-        queryClient
-          .getQueryCache()
-          .getAll()
-          .flatMap((cachedQuery) =>
-            cachedQuery.state.data === undefined
-              ? []
-              : [
-                  {
-                    queryKey: cachedQuery.queryKey,
-                    data: cachedQuery.state.data,
-                  },
-                ],
-          ),
+        cachedQueries.flatMap((cachedQuery) =>
+          cachedQuery.state.data === undefined
+            ? []
+            : [
+                {
+                  queryKey: cachedQuery.queryKey,
+                  data: cachedQuery.state.data,
+                },
+              ],
+        ),
         workspaceId,
+        userId,
       );
-      if (
-        status !== "success" ||
-        data === undefined ||
-        !isReplicableQuery(
-          query.queryKey,
-          data,
-          replicaScope,
-        )
-      ) {
-        return;
-      }
 
-      let dataJson: string;
-      let queryKeyJson: string;
-      try {
-        dataJson = JSON.stringify(data);
-        queryKeyJson = JSON.stringify(query.queryKey);
-      } catch {
-        return;
+      for (const query of cachedQueries) {
+        const { data, dataUpdatedAt, status } = query.state;
+        if (
+          status !== "success" ||
+          data === undefined ||
+          !isReplicableQuery(query.queryKey, data, replicaScope)
+        ) {
+          continue;
+        }
+
+        let dataJson: string;
+        let queryKeyJson: string;
+        try {
+          dataJson = JSON.stringify(data);
+          queryKeyJson = JSON.stringify(query.queryKey);
+        } catch {
+          continue;
+        }
+        const queued = lastQueued.get(query.queryHash);
+        if (
+          queued?.updatedAt === dataUpdatedAt &&
+          queued.dataJson === dataJson
+        ) {
+          continue;
+        }
+
+        const existing = pending.get(query.queryHash);
+        if (existing) window.clearTimeout(existing.timer);
+        lastQueued.set(query.queryHash, { dataJson, updatedAt: dataUpdatedAt });
+        const timer = window.setTimeout(() => {
+          pending.delete(query.queryHash);
+          void window.replicaAPI
+            .put(
+              userId,
+              workspaceId,
+              query.queryHash,
+              queryKeyJson,
+              dataJson,
+              dataUpdatedAt,
+            )
+            .catch((error) => {
+              const latest = lastQueued.get(query.queryHash);
+              if (
+                latest?.updatedAt === dataUpdatedAt &&
+                latest.dataJson === dataJson
+              ) {
+                lastQueued.delete(query.queryHash);
+              }
+              console.warn("Failed to persist local replica state", error);
+            });
+        }, WRITE_DEBOUNCE_MS);
+        pending.set(query.queryHash, {
+          timer,
+          dataJson,
+          updatedAt: dataUpdatedAt,
+          queryKeyJson,
+          queryHash: query.queryHash,
+        });
       }
-      const existing = pending.get(query.queryHash);
-      if (
-        existing &&
-        existing.updatedAt === dataUpdatedAt &&
-        existing.dataJson === dataJson
-      ) {
-        return;
-      }
-      if (existing) window.clearTimeout(existing.timer);
-      const timer = window.setTimeout(() => {
-        pending.delete(query.queryHash);
-        void window.replicaAPI
-          .put(
-            userId,
-            workspaceId,
-            query.queryHash,
-            queryKeyJson,
-            dataJson,
-            dataUpdatedAt,
-          )
-          .catch((error) => {
-            console.warn("Failed to persist local replica state", error);
-          });
-      }, WRITE_DEBOUNCE_MS);
-      pending.set(query.queryHash, {
-        timer,
-        dataJson,
-        updatedAt: dataUpdatedAt,
-        queryKeyJson,
-        queryHash: query.queryHash,
-      });
     });
 
     return () => {
