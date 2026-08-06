@@ -383,6 +383,8 @@ export interface Agent {
   runtime_id: string;
   /** False exactly when the agent has no runtime. Older backends omit it. */
   runtime_bound?: boolean;
+  /** True for the configuration-free Agent maintained by a Runtime. */
+  runtime_managed?: boolean;
   name: string;
   description: string;
   instructions: string;

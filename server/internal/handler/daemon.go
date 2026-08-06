@@ -377,6 +377,68 @@ func sharedDaemonCustomName(names []pgtype.Text) (string, bool) {
 	return first, true
 }
 
+func runtimeDefaultAgentName(rt db.AgentRuntime) string {
+	base := rt.Name
+	if rt.CustomName.Valid && strings.TrimSpace(rt.CustomName.String) != "" {
+		base = fmt.Sprintf("%s (%s)", strings.TrimSpace(rt.CustomName.String), rt.Provider)
+	}
+	runtimeID := uuidToString(rt.ID)
+	if len(runtimeID) > 8 {
+		runtimeID = runtimeID[:8]
+	}
+	return fmt.Sprintf("%s [%s]", base, runtimeID)
+}
+
+// ensureRuntimeDefaultAgent maintains the visible, configuration-free Agent
+// that represents a Runtime in Agent management, issue assignment, and chat.
+// Runtime visibility is mirrored into invocation permission: public runtimes
+// receive a workspace target, while private runtimes remain owner-only.
+func (h *Handler) ensureRuntimeDefaultAgent(ctx context.Context, rt db.AgentRuntime) (db.Agent, error) {
+	ownerID := rt.OwnerID
+	if !ownerID.Valid {
+		owner, err := h.Queries.GetWorkspaceOwnerMember(ctx, rt.WorkspaceID)
+		if err != nil {
+			return db.Agent{}, fmt.Errorf("resolve runtime default agent owner: %w", err)
+		}
+		ownerID = owner.UserID
+	}
+
+	legacyVisibility := "private"
+	permissionMode := "private"
+	if rt.Visibility == "public" {
+		legacyVisibility = "workspace"
+		permissionMode = "public_to"
+	}
+
+	vanilla, err := h.Queries.EnsureRuntimeDefaultAgent(ctx, db.EnsureRuntimeDefaultAgentParams{
+		WorkspaceID:    rt.WorkspaceID,
+		Name:           runtimeDefaultAgentName(rt),
+		RuntimeMode:    rt.RuntimeMode,
+		RuntimeID:      rt.ID,
+		Visibility:     legacyVisibility,
+		PermissionMode: permissionMode,
+		OwnerID:        ownerID,
+	})
+	if err != nil {
+		return db.Agent{}, fmt.Errorf("ensure runtime default agent: %w", err)
+	}
+
+	if err := h.Queries.DeleteAgentInvocationTargets(ctx, vanilla.ID); err != nil {
+		return db.Agent{}, fmt.Errorf("clear runtime default agent targets: %w", err)
+	}
+	if rt.Visibility == "public" {
+		if err := h.Queries.CreateAgentInvocationTarget(ctx, db.CreateAgentInvocationTargetParams{
+			AgentID:    vanilla.ID,
+			TargetType: "workspace",
+			TargetID:   rt.WorkspaceID,
+			CreatedBy:  ownerID,
+		}); err != nil {
+			return db.Agent{}, fmt.Errorf("grant workspace access to runtime default agent: %w", err)
+		}
+	}
+	return vanilla, nil
+}
+
 func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 	var req DaemonRegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -584,6 +646,20 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		// shared custom name so the machine title stays stable as providers come
 		// and go (MUL-4217). Shared with the failed-profile path below.
 		registered = h.inheritMachineCustomName(r.Context(), registered, inserted)
+		vanilla, err := h.ensureRuntimeDefaultAgent(r.Context(), registered)
+		if err != nil {
+			slog.Error("failed to ensure runtime default agent",
+				"runtime_id", uuidToString(registered.ID),
+				"workspace_id", req.WorkspaceID,
+				"error", err)
+			writeError(w, http.StatusInternalServerError, "failed to prepare runtime agent")
+			return
+		}
+		if inserted {
+			h.publish(protocol.EventAgentCreated, req.WorkspaceID, "system", "", map[string]any{
+				"agent": broadcastAgentResponse(h.agentToResponse(vanilla)),
+			})
+		}
 
 		// Inserted is false for normal daemon reconnects/upserts, so
 		// runtime_ready is a first-ready-per-runtime-row signal.
@@ -765,6 +841,21 @@ func (h *Handler) mergeLegacyRuntimes(r *http.Request, registered db.AgentRuntim
 			if err != nil {
 				slog.Warn("legacy runtime merge: reassign tasks failed", "legacy_daemon_id", legacyID, "old_runtime_id", oldID, "new_runtime_id", newID, "error", err)
 				continue
+			}
+			retired, err := h.Queries.RetireRuntimeDefaultAgentsForMerge(r.Context(), old.ID)
+			if err != nil {
+				slog.Warn("legacy runtime merge: retire old runtime default agent failed", "legacy_daemon_id", legacyID, "old_runtime_id", oldID, "error", err)
+				continue
+			}
+			for _, agent := range retired {
+				if err := h.Queries.DeleteAgentInvocationTargets(r.Context(), agent.ID); err != nil {
+					slog.Warn("legacy runtime merge: clear old runtime default agent targets failed",
+						"legacy_daemon_id", legacyID,
+						"old_runtime_id", oldID,
+						"agent_id", uuidToString(agent.ID),
+						"error", err)
+					continue
+				}
 			}
 			if err := h.Queries.RecordRuntimeLegacyDaemonID(r.Context(), db.RecordRuntimeLegacyDaemonIDParams{
 				ID:             registered.ID,

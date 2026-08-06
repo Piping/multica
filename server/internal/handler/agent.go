@@ -46,15 +46,19 @@ type AgentResponse struct {
 	// branch on this rather than on RuntimeID being falsy, and must not confuse
 	// it with a bound-but-offline runtime (a different user story: reconnect the
 	// machine vs. pick a new one).
-	RuntimeBound  bool            `json:"runtime_bound"`
-	Name          string          `json:"name"`
-	Description   string          `json:"description"`
-	Instructions  string          `json:"instructions"`
-	AvatarURL     *string         `json:"avatar_url"`
-	RuntimeMode   string          `json:"runtime_mode"`
-	RuntimeConfig any             `json:"runtime_config"`
-	CustomArgs    []string        `json:"custom_args"`
-	McpConfig     json.RawMessage `json:"mcp_config"`
+	RuntimeBound bool `json:"runtime_bound"`
+	// RuntimeManaged identifies the visible, configuration-free Agent that is
+	// maintained for a Runtime. It remains available in normal lists, issue
+	// assignment, and chat, but its persona/configuration is read-only.
+	RuntimeManaged bool            `json:"runtime_managed"`
+	Name           string          `json:"name"`
+	Description    string          `json:"description"`
+	Instructions   string          `json:"instructions"`
+	AvatarURL      *string         `json:"avatar_url"`
+	RuntimeMode    string          `json:"runtime_mode"`
+	RuntimeConfig  any             `json:"runtime_config"`
+	CustomArgs     []string        `json:"custom_args"`
+	McpConfig      json.RawMessage `json:"mcp_config"`
 	// custom_env is intentionally NOT serialized on agent resources. The
 	// agent_list/get/create/update/archive/restore responses and WS events
 	// only expose coarse metadata (has_custom_env, custom_env_key_count) so
@@ -169,6 +173,7 @@ func (h *Handler) agentToResponse(a db.Agent) AgentResponse {
 		WorkspaceID:              uuidToString(a.WorkspaceID),
 		RuntimeID:                uuidToString(a.RuntimeID),
 		RuntimeBound:             a.RuntimeID.Valid,
+		RuntimeManaged:           a.SystemKey.Valid && a.SystemKey.String == "runtime_default",
 		Name:                     a.Name,
 		Description:              a.Description,
 		Instructions:             a.Instructions,
@@ -1521,6 +1526,14 @@ func (h *Handler) canManageAgent(w http.ResponseWriter, r *http.Request, agent d
 	return true
 }
 
+func rejectRuntimeManagedAgentMutation(w http.ResponseWriter, agent db.Agent) bool {
+	if agent.SystemKey.Valid && agent.SystemKey.String == "runtime_default" {
+		writeError(w, http.StatusConflict, "this agent is managed by its runtime")
+		return true
+	}
+	return false
+}
+
 func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	existing, ok := h.loadAgentForUser(w, r, id)
@@ -1528,6 +1541,9 @@ func (h *Handler) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.canManageAgent(w, r, existing) {
+		return
+	}
+	if rejectRuntimeManagedAgentMutation(w, existing) {
 		return
 	}
 
@@ -1981,6 +1997,9 @@ func (h *Handler) ArchiveAgent(w http.ResponseWriter, r *http.Request) {
 	if !h.canManageAgent(w, r, agent) {
 		return
 	}
+	if rejectRuntimeManagedAgentMutation(w, agent) {
+		return
+	}
 	if agent.ArchivedAt.Valid {
 		writeError(w, http.StatusConflict, "agent is already archived")
 		return
@@ -2028,6 +2047,9 @@ func (h *Handler) RestoreAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.canManageAgent(w, r, agent) {
+		return
+	}
+	if rejectRuntimeManagedAgentMutation(w, agent) {
 		return
 	}
 	if !agent.ArchivedAt.Valid {

@@ -1,8 +1,13 @@
 {
   "page": {
     "title": "Agent",
-    "select_prompt": "セッションを選択するか、runtime から開始してください",
+    "select_prompt": "セッションを選択するか、エージェントから開始してください",
     "agent_link_no_access": "このエージェントとチャットする権限がありません。"
+  },
+  "agent_picker": {
+    "launch_title": "Agent セッションを開始",
+    "description": "新しい会話を始めるエージェントを選択してください。Runtime 付属のエージェントには追加の指示やコンテキストはありません。",
+    "choose": "エージェントを選択"
   },
   "runtime_picker": {
     "new_session": "新しいセッション",

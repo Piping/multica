@@ -566,6 +566,7 @@ func (h *Handler) UpdateAgentRuntime(w http.ResponseWriter, r *http.Request) {
 	}
 
 	changed := false
+	affectedRuntimes := make(map[pgtype.UUID]db.AgentRuntime)
 
 	if needVisibility {
 		updated, err := h.Queries.UpdateAgentRuntimeVisibility(r.Context(), db.UpdateAgentRuntimeVisibilityParams{
@@ -579,6 +580,7 @@ func (h *Handler) UpdateAgentRuntime(w http.ResponseWriter, r *http.Request) {
 		}
 		rt = updated
 		changed = true
+		affectedRuntimes[rt.ID] = rt
 	}
 
 	if req.CustomName != nil {
@@ -609,9 +611,9 @@ func (h *Handler) UpdateAgentRuntime(w http.ResponseWriter, r *http.Request) {
 			// The actor always owns (or admins) the runtime addressed by :id,
 			// so it is among the updated rows — surface it in the response.
 			for _, row := range rows {
+				affectedRuntimes[row.ID] = row
 				if uuidToString(row.ID) == uuidToString(runtimeUUID) {
 					rt = row
-					break
 				}
 			}
 			changed = true
@@ -627,10 +629,25 @@ func (h *Handler) UpdateAgentRuntime(w http.ResponseWriter, r *http.Request) {
 			}
 			rt = updated
 			changed = true
+			affectedRuntimes[rt.ID] = rt
 		}
 	}
 
 	if changed {
+		for _, affected := range affectedRuntimes {
+			vanilla, err := h.ensureRuntimeDefaultAgent(r.Context(), affected)
+			if err != nil {
+				slog.Error("failed to sync runtime default agent",
+					"error", err,
+					"runtime_id", uuidToString(affected.ID))
+				writeError(w, http.StatusInternalServerError, "failed to update runtime agent")
+				return
+			}
+			h.publish(protocol.EventAgentStatus, uuidToString(affected.WorkspaceID), "member", uuidToString(member.UserID), map[string]any{
+				"agent": broadcastAgentResponse(h.agentToResponse(vanilla)),
+			})
+		}
+
 		// Notify connected clients that runtime metadata changed so the
 		// list/detail pages refresh — matches the pattern used by
 		// DeleteAgentRuntime.
@@ -784,6 +801,11 @@ func unbindRuntimeForDelete(ctx context.Context, qtx *db.Queries, runtimeID pgty
 	unboundIDs := make([]pgtype.UUID, len(unbound))
 	for i, a := range unbound {
 		unboundIDs[i] = a.ID
+		if a.SystemKey.Valid && a.SystemKey.String == "runtime_default" {
+			if err := qtx.DeleteAgentInvocationTargets(ctx, a.ID); err != nil {
+				return out, fmt.Errorf("clear runtime default agent targets: %w", err)
+			}
+		}
 	}
 	paused, err := qtx.PauseAutopilotsByUnboundAgents(ctx, unboundIDs)
 	if err != nil {
@@ -851,8 +873,8 @@ func (h *Handler) publishRuntimeTeardown(ctx context.Context, res runtimeTeardow
 	}
 	for _, a := range res.UnboundAgents {
 		// agent:status is the generic "this agent changed" broadcast the agent
-		// update path already uses; subscribers refresh the row and see
-		// runtime_bound=false. No agent:archived here — nothing was archived.
+		// update path already uses; subscribers refresh the row and see either
+		// a normal unbound Agent or an archived Runtime-managed Agent.
 		h.publish(protocol.EventAgentStatus, wsID, "member", userID, map[string]any{
 			"agent": broadcastAgentResponse(h.agentToResponse(a)),
 		})

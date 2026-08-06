@@ -75,6 +75,52 @@ func TestUnbindAgentsAndDeleteRuntime_KeepsChatHistory(t *testing.T) {
 	}
 }
 
+func TestUnbindAgentsAndDeleteRuntime_ArchivesRuntimeManagedAgent(t *testing.T) {
+	if testHandler == nil {
+		t.Skip("database not available")
+	}
+	ctx := context.Background()
+
+	runtimeID := createCascadeFixtureRuntime(t, ctx, "Managed Runtime Delete")
+	runtime, err := testHandler.Queries.GetAgentRuntime(ctx, parseUUID(runtimeID))
+	if err != nil {
+		t.Fatalf("load runtime: %v", err)
+	}
+	vanilla, err := testHandler.ensureRuntimeDefaultAgent(ctx, runtime)
+	if err != nil {
+		t.Fatalf("ensure runtime Agent: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM agent WHERE id = $1`, vanilla.ID)
+	})
+
+	unbindRuntime(t, ctx, runtimeID, uuidToString(vanilla.ID))
+
+	var (
+		bound      bool
+		archived   bool
+		targetRows int
+	)
+	if err := testPool.QueryRow(ctx, `
+		SELECT runtime_id IS NOT NULL, archived_at IS NOT NULL
+		FROM agent
+		WHERE id = $1
+	`, vanilla.ID).Scan(&bound, &archived); err != nil {
+		t.Fatalf("load retired runtime Agent: %v", err)
+	}
+	if bound || !archived {
+		t.Fatalf("retired runtime Agent bound=%v archived=%v, want false/true", bound, archived)
+	}
+	if err := testPool.QueryRow(ctx,
+		`SELECT count(*) FROM agent_invocation_target WHERE agent_id = $1`,
+		vanilla.ID).Scan(&targetRows); err != nil {
+		t.Fatalf("count retired runtime Agent targets: %v", err)
+	}
+	if targetRows != 0 {
+		t.Fatalf("retired runtime Agent has %d invocation targets, want 0", targetRows)
+	}
+}
+
 // TestUnbindAgentsAndDeleteRuntime_KeepsTaskHistory is the second half of the
 // data loss, and the one that needs agent_task_queue.runtime_id to be nullable:
 // that column is NOT NULL with an ON DELETE CASCADE FK, and task_message /

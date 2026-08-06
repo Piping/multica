@@ -85,21 +85,56 @@ INSERT INTO agent (
 )
 RETURNING *;
 
--- name: CreateRuntimeChatCarrier :one
--- One hidden execution carrier per direct runtime chat. The user chooses an
--- available runtime rather than a reusable persona agent; keeping the carrier
--- session-scoped preserves the existing agent-backed task pipeline without
--- leaking an implementation detail into agent lists or assignment surfaces.
+-- name: EnsureRuntimeDefaultAgent :one
+-- Every runtime owns one visible vanilla agent. It is a normal `kind = 'user'`
+-- row so chat pickers, Agent management, and issue assignment all use the same
+-- entity. system_key marks the row as runtime-managed without hiding it.
+--
+-- The conflict target is the existing partial identity index from migration
+-- 172. Registration calls this on every upsert, so the update side repairs
+-- names, ownership, runtime mode, and access after reconnects or metadata
+-- changes while preserving the intentionally empty persona configuration.
 INSERT INTO agent (
     workspace_id, name, description, runtime_mode, runtime_config, runtime_id,
     visibility, permission_mode, max_concurrent_tasks, owner_id, instructions,
     custom_env, custom_args, kind, system_key
 ) VALUES (
     @workspace_id, @name, '', @runtime_mode, '{}'::jsonb, @runtime_id,
-    'private', 'private', 1, @owner_id, @instructions,
-    '{}'::jsonb, '[]'::jsonb, 'system', @system_key
+    @visibility, @permission_mode, 6, @owner_id, '',
+    '{}'::jsonb, '[]'::jsonb, 'user', 'runtime_default'
 )
+ON CONFLICT (runtime_id)
+    WHERE system_key = 'runtime_default'
+DO UPDATE SET
+    name = EXCLUDED.name,
+    description = '',
+    avatar_url = NULL,
+    runtime_mode = EXCLUDED.runtime_mode,
+    runtime_config = '{}'::jsonb,
+    runtime_id = EXCLUDED.runtime_id,
+    visibility = EXCLUDED.visibility,
+    permission_mode = EXCLUDED.permission_mode,
+    max_concurrent_tasks = 6,
+    owner_id = EXCLUDED.owner_id,
+    instructions = '',
+    custom_env = '{}'::jsonb,
+    custom_args = '[]'::jsonb,
+    mcp_config = NULL,
+    model = NULL,
+    thinking_level = NULL,
+    service_tier = NULL,
+    composio_toolkit_allowlist = NULL,
+    disabled_runtime_skills = '[]'::jsonb,
+    archived_at = NULL,
+    archived_by = NULL,
+    updated_at = now()
 RETURNING *;
+
+-- name: ListRuntimeDefaultAgentsByRuntimeIDs :many
+SELECT * FROM agent
+WHERE runtime_id = ANY(@runtime_ids::uuid[])
+  AND kind = 'user'
+  AND system_key = 'runtime_default';
 
 -- name: DeleteSystemAgentByID :exec
 -- Builder and direct-runtime chat sessions own their hidden execution agent.

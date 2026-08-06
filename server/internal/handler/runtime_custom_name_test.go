@@ -28,6 +28,7 @@ func TestUpdateAgentRuntime_CustomNamePatchApplies(t *testing.T) {
 	}
 
 	runtimeID, runtimeOwnerID, plainMemberID := runtimeVisibilityFixture(t)
+	ctx := context.Background()
 
 	// Owner sets a custom name.
 	w := patchRuntimeCustomName(runtimeOwnerID, runtimeID, map[string]any{"custom_name": "  Prod Box  "})
@@ -45,6 +46,18 @@ func TestUpdateAgentRuntime_CustomNamePatchApplies(t *testing.T) {
 	if resp.Name != "Visibility Test Runtime" {
 		t.Fatalf("name should be untouched by rename: got %q", resp.Name)
 	}
+	var vanillaName string
+	if err := testPool.QueryRow(ctx, `
+		SELECT name
+		FROM agent
+		WHERE runtime_id = $1 AND system_key = 'runtime_default'
+	`, runtimeID).Scan(&vanillaName); err != nil {
+		t.Fatalf("load renamed runtime Agent: %v", err)
+	}
+	wantVanillaName := "Prod Box (visibility_test_provider) [" + runtimeID[:8] + "]"
+	if vanillaName != wantVanillaName {
+		t.Fatalf("runtime Agent name = %q, want custom runtime name", vanillaName)
+	}
 
 	// Empty string clears the override back to NULL.
 	w = patchRuntimeCustomName(runtimeOwnerID, runtimeID, map[string]any{"custom_name": "   "})
@@ -57,6 +70,17 @@ func TestUpdateAgentRuntime_CustomNamePatchApplies(t *testing.T) {
 	}
 	if resp.CustomName != nil {
 		t.Fatalf("custom_name should be cleared to null, got %q", *resp.CustomName)
+	}
+	if err := testPool.QueryRow(ctx, `
+		SELECT name
+		FROM agent
+		WHERE runtime_id = $1 AND system_key = 'runtime_default'
+	`, runtimeID).Scan(&vanillaName); err != nil {
+		t.Fatalf("load reset runtime Agent: %v", err)
+	}
+	wantVanillaName = "Visibility Test Runtime [" + runtimeID[:8] + "]"
+	if vanillaName != wantVanillaName {
+		t.Fatalf("runtime Agent name = %q, want daemon runtime name", vanillaName)
 	}
 
 	// Over-long name is rejected before any mutation.
@@ -121,6 +145,22 @@ func TestUpdateAgentRuntime_CustomNameMachineFanout(t *testing.T) {
 		}
 		if name == nil || *name != "Bohan's MacBook" {
 			t.Fatalf("runtime %s custom_name = %v, want machine name applied", id, name)
+		}
+		var agentName string
+		if err := testPool.QueryRow(ctx, `
+			SELECT name
+			FROM agent
+			WHERE runtime_id = $1 AND system_key = 'runtime_default'
+		`, id).Scan(&agentName); err != nil {
+			t.Fatalf("read runtime Agent name for %s: %v", id, err)
+		}
+		var provider string
+		if err := testPool.QueryRow(ctx, `SELECT provider FROM agent_runtime WHERE id = $1`, id).Scan(&provider); err != nil {
+			t.Fatalf("read runtime provider for %s: %v", id, err)
+		}
+		want := "Bohan's MacBook (" + provider + ") [" + id[:8] + "]"
+		if agentName != want {
+			t.Fatalf("runtime Agent %s name = %q, want %q", id, agentName, want)
 		}
 	}
 }

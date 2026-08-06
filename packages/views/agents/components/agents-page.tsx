@@ -887,7 +887,7 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
         lastActiveDays: lastActiveDaysAgo(activity),
         owner: agent.owner_id ? membersById.get(agent.owner_id) ?? null : null,
         isOwnedByMe: isOwner,
-        canManage: isWorkspaceAdmin || isOwner,
+        canManage: !agent.runtime_managed && (isWorkspaceAdmin || isOwner),
       };
     });
   }, [

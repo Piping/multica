@@ -315,6 +315,9 @@ WHERE runtime_id = $1 AND completed_at IS NOT NULL;
 -- MUL-5559: the runtime-delete replacement for archive-then-hard-delete. Every
 -- user agent bound to this runtime becomes unbound (runtime_id IS NULL) and
 -- keeps its row, chats, labels, channel installations and autopilot config.
+-- Runtime-managed vanilla Agents are archived at the same time: their history
+-- survives, but they cannot be rebound or configured after their Runtime is
+-- gone.
 --
 -- Deliberately NOT filtered on archived_at: an agent archived earlier is just
 -- as much the user's data as an active one, and hard-deleting it was the same
@@ -323,7 +326,12 @@ WHERE runtime_id = $1 AND completed_at IS NOT NULL;
 -- DeleteSystemAgentsByRuntime), so leaving them unbound would strand rows no
 -- one can repair.
 UPDATE agent
-SET runtime_id = NULL, updated_at = now()
+SET runtime_id = NULL,
+    archived_at = CASE
+        WHEN system_key = 'runtime_default' THEN COALESCE(archived_at, now())
+        ELSE archived_at
+    END,
+    updated_at = now()
 WHERE runtime_id = $1 AND kind = 'user'
 RETURNING *;
 
@@ -364,7 +372,21 @@ WHERE workspace_id = @workspace_id
 -- Re-points every agent referencing old_runtime_id at new_runtime_id.
 UPDATE agent
 SET runtime_id = @new_runtime_id
-WHERE runtime_id = @old_runtime_id;
+WHERE runtime_id = @old_runtime_id
+  AND system_key IS DISTINCT FROM 'runtime_default';
+
+-- name: RetireRuntimeDefaultAgentsForMerge :many
+-- A legacy runtime identity may already own its vanilla Agent. The newly
+-- registered target runtime has its own unique vanilla Agent, so keep the old
+-- Agent and its Chat Sessions as archived history while releasing the old
+-- runtime row for deletion.
+UPDATE agent
+SET runtime_id = NULL,
+    archived_at = COALESCE(archived_at, now()),
+    updated_at = now()
+WHERE runtime_id = $1
+  AND system_key = 'runtime_default'
+RETURNING *;
 
 -- name: ReassignTasksToRuntime :execrows
 -- Re-points every queued/running/completed task referencing old_runtime_id.

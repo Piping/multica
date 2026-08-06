@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
-import { ArrowLeft, Bot } from "lucide-react";
+import { ArrowLeft, Bot, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@multica/ui/components/ui/button";
 import {
@@ -27,10 +27,7 @@ import { ChatInput } from "./components/chat-input";
 import { ChatThreadList } from "./components/chat-thread-list";
 import { ChatSessionHeader } from "./components/chat-session-header";
 import { EmptyState } from "./components/chat-empty-state";
-import {
-  RuntimeChoices,
-  RuntimeSessionPicker,
-} from "./components/runtime-session-picker";
+import { AgentPicker, NewChatButton } from "./components/new-chat-button";
 import { useChatController } from "./components/use-chat-controller";
 import { OfflineBanner } from "./components/offline-banner";
 import { NoAgentBanner } from "./components/no-agent-banner";
@@ -165,20 +162,6 @@ export function ChatPage() {
     setComposingNew(true);
   };
 
-  const startRuntimeSession = async (
-    runtime: (typeof c.availableRuntimes)[number],
-  ) => {
-    supersedeAgentIntent();
-    try {
-      const session = await c.handleStartNewRuntimeChat(runtime);
-      setComposingNew(false);
-      return session;
-    } catch {
-      toast.error(t(($) => $.runtime_picker.create_failed));
-      return null;
-    }
-  };
-
   const changeProjectContext = (projectId: string | null) => {
     if (projectId === c.activeProjectId) return;
     c.handleProjectChange(projectId);
@@ -220,11 +203,10 @@ export function ChatPage() {
   }, [urlAgent, c.availableAgents, c.agentsSettled]);
 
   const newChatButton = (
-    <RuntimeSessionPicker
-      runtimes={c.availableRuntimes}
-      loading={!c.runtimesSettled}
-      pending={c.isCreatingSession}
-      onSelect={startRuntimeSession}
+    <NewChatButton
+      agents={c.availableAgents}
+      userId={c.user?.id}
+      onStart={startNewChat}
     />
   );
 
@@ -369,8 +351,8 @@ export function ChatPage() {
   }
 
   // -- Desktop: resizable two-panel. With no session selected, the detail pane
-  // is the runtime-first launcher; selecting one creates a durable session and
-  // opens the existing conversation surface. --------------------------------
+  // starts a fresh compose by choosing either a custom Agent or a Runtime's
+  // managed vanilla Agent. ---------------------------------------------------
   const hasTarget = !!c.activeSessionId || composingNew;
   return (
     <ResizablePanelGroup
@@ -403,17 +385,26 @@ export function ChatPage() {
                   <Bot className="size-5" />
                 </span>
                 <h2 className="text-title-sm font-semibold">
-                  {t(($) => $.runtime_picker.launch_title)}
+                  {t(($) => $.agent_picker.launch_title)}
                 </h2>
                 <p className="mt-1 text-body text-muted-foreground">
-                  {t(($) => $.runtime_picker.description)}
+                  {t(($) => $.agent_picker.description)}
                 </p>
               </div>
-              <RuntimeChoices
-                runtimes={c.availableRuntimes}
-                loading={!c.runtimesSettled}
-                pending={c.isCreatingSession}
-                onSelect={(runtime) => void startRuntimeSession(runtime)}
+              <AgentPicker
+                agents={c.availableAgents}
+                userId={c.user?.id}
+                onSelect={startNewChat}
+                align="start"
+                triggerRender={
+                  <Button className="w-fit gap-2" />
+                }
+                trigger={
+                  <>
+                    <Plus className="size-4" />
+                    {t(($) => $.agent_picker.choose)}
+                  </>
+                }
               />
             </div>
           )}

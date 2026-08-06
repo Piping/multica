@@ -89,6 +89,9 @@ func (h *Handler) SetAgentRuntimeSkillEnabled(w http.ResponseWriter, r *http.Req
 	if !h.canManageAgent(w, r, agent) {
 		return
 	}
+	if rejectRuntimeManagedAgentMutation(w, agent) {
+		return
+	}
 
 	var req struct {
 		RuntimeID string `json:"runtime_id"`

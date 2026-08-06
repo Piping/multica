@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/analytics"
@@ -27,10 +25,6 @@ import (
 // chatSessionTitleMaxLen caps the rename input. Long enough to fit a
 // meaningful summary, short enough to keep the dropdown row scannable.
 const chatSessionTitleMaxLen = 200
-
-const runtimeChatInstructions = `You are an AI agent working directly with the user in a persistent session.
-
-Use the tools and workspace available through the selected runtime to inspect, explain, and modify the user's project. Be concise and concrete. Before changing files, understand the relevant code and preserve unrelated work. Report what you changed and how you verified it. Ask a focused question only when a required decision cannot be inferred safely.`
 
 // ---------------------------------------------------------------------------
 // Chat Sessions
@@ -75,7 +69,6 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		agentID pgtype.UUID
-		runtime db.AgentRuntime
 	)
 	if req.AgentID != "" {
 		agentID, ok = parseUUIDOrBadRequest(w, req.AgentID, "agent_id")
@@ -104,10 +97,28 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		runtime, ok = h.resolveRuntimeChatRuntime(w, r, workspaceID, workspaceUUID, req.RuntimeID)
-		if !ok {
+		runtime, runtimeOK := h.resolveRuntimeChatRuntime(w, r, workspaceID, workspaceUUID, req.RuntimeID)
+		if !runtimeOK {
 			return
 		}
+		vanilla, err := h.ensureRuntimeDefaultAgent(r.Context(), runtime)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to prepare runtime agent")
+			return
+		}
+		agentID = vanilla.ID
+		ok = true
+	}
+	if !ok {
+		return
+	}
+
+	// Both request forms now resolve to a durable visible Agent. runtime_id is
+	// accepted only for rolling compatibility with older clients; new clients
+	// always choose an Agent directly.
+	if !agentID.Valid {
+		writeError(w, http.StatusInternalServerError, "failed to resolve chat agent")
+		return
 	}
 
 	// Create inside a tx that first takes a FOR KEY SHARE lock on the workspace
@@ -145,27 +156,6 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.RuntimeID != "" {
-		flowID := uuid.NewString()
-		carrier, err := qtx.CreateRuntimeChatCarrier(r.Context(), db.CreateRuntimeChatCarrierParams{
-			WorkspaceID:  workspaceUUID,
-			Name:         fmt.Sprintf(".multica-runtime-chat-%s", flowID),
-			RuntimeMode:  runtime.RuntimeMode,
-			RuntimeID:    runtime.ID,
-			OwnerID:      parseUUID(userID),
-			Instructions: runtimeChatInstructions,
-			SystemKey: pgtype.Text{
-				String: fmt.Sprintf("runtime_chat:%s", flowID),
-				Valid:  true,
-			},
-		})
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to prepare runtime chat")
-			return
-		}
-		agentID = carrier.ID
-	}
-
 	session, err := qtx.CreateChatSession(r.Context(), db.CreateChatSessionParams{
 		WorkspaceID: workspaceUUID,
 		AgentID:     agentID,
@@ -184,7 +174,6 @@ func (h *Handler) CreateChatSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := chatSessionToResponse(session)
-	response.RuntimeDirect = req.RuntimeID != ""
 	writeJSON(w, http.StatusCreated, response)
 }
 

@@ -804,6 +804,7 @@ const reassignAgentsToRuntime = `-- name: ReassignAgentsToRuntime :execrows
 UPDATE agent
 SET runtime_id = $1
 WHERE runtime_id = $2
+  AND system_key IS DISTINCT FROM 'runtime_default'
 `
 
 type ReassignAgentsToRuntimeParams struct {
@@ -860,6 +861,69 @@ type RecordRuntimeLegacyDaemonIDParams struct {
 func (q *Queries) RecordRuntimeLegacyDaemonID(ctx context.Context, arg RecordRuntimeLegacyDaemonIDParams) error {
 	_, err := q.db.Exec(ctx, recordRuntimeLegacyDaemonID, arg.ID, arg.LegacyDaemonID)
 	return err
+}
+
+const retireRuntimeDefaultAgentsForMerge = `-- name: RetireRuntimeDefaultAgentsForMerge :many
+UPDATE agent
+SET runtime_id = NULL,
+    archived_at = COALESCE(archived_at, now()),
+    updated_at = now()
+WHERE runtime_id = $1
+  AND system_key = 'runtime_default'
+RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, runtime_id, instructions, archived_at, archived_by, custom_env, custom_args, mcp_config, model, thinking_level, composio_toolkit_allowlist, permission_mode, kind, system_key, disabled_runtime_skills, service_tier
+`
+
+// A legacy runtime identity may already own its vanilla Agent. The newly
+// registered target runtime has its own unique vanilla Agent, so keep the old
+// Agent and its Chat Sessions as archived history while releasing the old
+// runtime row for deletion.
+func (q *Queries) RetireRuntimeDefaultAgentsForMerge(ctx context.Context, runtimeID pgtype.UUID) ([]Agent, error) {
+	rows, err := q.db.Query(ctx, retireRuntimeDefaultAgentsForMerge, runtimeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Agent{}
+	for rows.Next() {
+		var i Agent
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.AvatarUrl,
+			&i.RuntimeMode,
+			&i.RuntimeConfig,
+			&i.Visibility,
+			&i.Status,
+			&i.MaxConcurrentTasks,
+			&i.OwnerID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Description,
+			&i.RuntimeID,
+			&i.Instructions,
+			&i.ArchivedAt,
+			&i.ArchivedBy,
+			&i.CustomEnv,
+			&i.CustomArgs,
+			&i.McpConfig,
+			&i.Model,
+			&i.ThinkingLevel,
+			&i.ComposioToolkitAllowlist,
+			&i.PermissionMode,
+			&i.Kind,
+			&i.SystemKey,
+			&i.DisabledRuntimeSkills,
+			&i.ServiceTier,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const selectStaleOnlineRuntimes = `-- name: SelectStaleOnlineRuntimes :many
@@ -990,7 +1054,12 @@ func (q *Queries) UnbindTasksFromRuntime(ctx context.Context, runtimeID pgtype.U
 
 const unbindUserAgentsFromRuntime = `-- name: UnbindUserAgentsFromRuntime :many
 UPDATE agent
-SET runtime_id = NULL, updated_at = now()
+SET runtime_id = NULL,
+    archived_at = CASE
+        WHEN system_key = 'runtime_default' THEN COALESCE(archived_at, now())
+        ELSE archived_at
+    END,
+    updated_at = now()
 WHERE runtime_id = $1 AND kind = 'user'
 RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, runtime_id, instructions, archived_at, archived_by, custom_env, custom_args, mcp_config, model, thinking_level, composio_toolkit_allowlist, permission_mode, kind, system_key, disabled_runtime_skills, service_tier
 `
@@ -998,6 +1067,9 @@ RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visi
 // MUL-5559: the runtime-delete replacement for archive-then-hard-delete. Every
 // user agent bound to this runtime becomes unbound (runtime_id IS NULL) and
 // keeps its row, chats, labels, channel installations and autopilot config.
+// Runtime-managed vanilla Agents are archived at the same time: their history
+// survives, but they cannot be rebound or configured after their Runtime is
+// gone.
 //
 // Deliberately NOT filtered on archived_at: an agent archived earlier is just
 // as much the user's data as an active one, and hard-deleting it was the same

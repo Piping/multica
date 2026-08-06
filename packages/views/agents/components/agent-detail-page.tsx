@@ -114,6 +114,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
     canEdit,
     isLoading: permissionsLoading,
   } = useAgentPermissions(agent, wsId);
+  const canConfigure = canEdit.allowed && !agent?.runtime_managed;
 
   const [confirmArchive, setConfirmArchive] = useState(false);
 
@@ -302,7 +303,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
         presence={presence}
         backHref={paths.agents()}
         canAssign={canAssign.allowed}
-        canArchive={canEdit.allowed}
+        canArchive={canConfigure}
         dmPending={permissionsLoading}
         onDm={handleDm}
         onAssign={handleAssign}
@@ -325,7 +326,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
           <span className="flex-1">
             {t(($) => $.detail.archived_banner)}
           </span>
-          {canEdit.allowed && (
+          {canConfigure && (
             <Button
               variant="outline"
               size="sm"
@@ -344,7 +345,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
           <span className="flex-1">
             {t(($) => $.detail.runtime_required_banner)}
           </span>
-          {canEdit.allowed && (
+          {canConfigure && (
             <Button
               variant="outline"
               size="sm"
@@ -366,7 +367,7 @@ export function AgentDetailPage({ agentId }: AgentDetailPageProps) {
           members={members}
           onUpdate={handleUpdate}
           currentUserId={currentUser?.id ?? null}
-          canEdit={canEdit.allowed}
+          canEdit={canConfigure}
           navIntent={tabNavIntent}
           onNavIntentHandled={() => setTabNavIntent(null)}
         />

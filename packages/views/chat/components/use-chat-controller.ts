@@ -13,7 +13,6 @@ import { useAuthStore } from "@multica/core/auth";
 import { agentListOptions, memberListOptions } from "@multica/core/workspace/queries";
 import { projectListOptions } from "@multica/core/projects/queries";
 import {
-  isRuntimeUsableForUser,
   runtimeDisplayName,
   runtimeListOptions,
 } from "@multica/core/runtimes";
@@ -49,7 +48,6 @@ import type {
   ChatMessage,
   ChatMessagesPage,
   ChatPendingTask,
-  RuntimeDevice,
 } from "@multica/core/types";
 import { useT } from "../../i18n";
 import { useAppForeground } from "../../common/use-app-foreground";
@@ -222,9 +220,7 @@ export function useChatController(opts?: { isActive?: boolean }) {
   const { data: members = [], isSuccess: membersLoaded } = useQuery(
     memberListOptions(wsId),
   );
-  const { data: runtimes = [], isSuccess: runtimesLoaded } = useQuery(
-    runtimeListOptions(wsId),
-  );
+  const { data: runtimes = [] } = useQuery(runtimeListOptions(wsId));
   const { data: sessions = [], isSuccess: sessionsLoaded } = useQuery(
     chatSessionsOptions(wsId),
   );
@@ -309,13 +305,6 @@ export function useChatController(opts?: { isActive?: boolean }) {
   const availableAgents = agents.filter(
     (a) => !a.archived_at && canAssignAgent(a, user?.id, memberRole),
   );
-  const availableRuntimes = runtimes.filter(
-    (runtime) =>
-      runtime.status === "online" &&
-      (memberRole === "owner" ||
-        memberRole === "admin" ||
-        isRuntimeUsableForUser(runtime, user?.id ?? null)),
-  );
   // `availableAgents` is only trustworthy once BOTH queries above succeeded:
   // the permission filter reads the member role, so agents-without-members
   // misreports a public_to agent as unavailable. Consumers that must tell
@@ -348,12 +337,11 @@ export function useChatController(opts?: { isActive?: boolean }) {
       availableAgents.find((a) => a.id === selectedAgentId) ??
       availableAgents[0] ??
       null;
-  const activeRuntime =
-    sessionRuntime ??
-    (!activeSessionId
-      ? availableRuntimes.find((runtime) => runtime.id === selectedRuntimeId) ?? null
-      : null);
-  const isRuntimeDirect = !!sessionRuntime || (!activeSessionId && !!activeRuntime);
+  // Runtime-direct sessions are legacy rows. They remain readable and can
+  // finish their existing conversation, but every new chat is now bound to a
+  // visible Agent (including each Runtime's managed vanilla Agent).
+  const activeRuntime = sessionRuntime;
+  const isRuntimeDirect = !!sessionRuntime;
   const isAgentRuntimeBound = isRuntimeDirect || (!!activeAgent && hasAgentRuntime(activeAgent));
   const activeTargetName = activeRuntime
     ? runtimeDisplayName(activeRuntime)
@@ -424,15 +412,13 @@ export function useChatController(opts?: { isActive?: boolean }) {
       ) {
         return activeSessionId;
       }
-      if (!activeAgent && !activeRuntime) return null;
+      if (!activeAgent) return null;
       if (sessionPromiseRef.current) return sessionPromiseRef.current;
 
       const promise = (async () => {
         try {
           const session = await createSession.mutateAsync({
-            ...(activeRuntime
-              ? { runtime_id: activeRuntime.id }
-              : { agent_id: activeAgent!.id }),
+            agent_id: activeAgent.id,
             title: deriveChatTitle(titleSeed),
             project_id: activeProjectId,
           });
@@ -447,7 +433,6 @@ export function useChatController(opts?: { isActive?: boolean }) {
     [
       activeSessionId,
       activeAgent,
-      activeRuntime,
       activeProjectId,
       createSession,
       sessions,
@@ -752,33 +737,6 @@ export function useChatController(opts?: { isActive?: boolean }) {
     ],
   );
 
-  const handleStartNewRuntimeChat = useCallback(
-    async (runtime: RuntimeDevice) => {
-      uiLogger.info("startNewRuntimeChat", {
-        runtimeId: runtime.id,
-        previousSessionId: activeSessionId,
-      });
-      setSelectedRuntimeId(runtime.id);
-      setSelectedProjectId(null);
-      const session = await createSession.mutateAsync({
-        runtime_id: runtime.id,
-        title: runtimeDisplayName(runtime),
-        project_id: null,
-      });
-      setActiveSession(session.id);
-      requestInputFocus();
-      return session;
-    },
-    [
-      activeSessionId,
-      createSession,
-      setSelectedRuntimeId,
-      setSelectedProjectId,
-      setActiveSession,
-      requestInputFocus,
-    ],
-  );
-
   const handleSelectSession = useCallback(
     (session: {
       id: string;
@@ -827,7 +785,16 @@ export function useChatController(opts?: { isActive?: boolean }) {
             projectId: null,
           });
         } else {
-          setSelectedRuntimeId(currentSession.runtime_id);
+          const runtimeAgent = availableAgents.find(
+            (agent) =>
+              agent.runtime_managed &&
+              agent.runtime_id === currentSession.runtime_id,
+          );
+          if (!runtimeAgent) {
+            toast.error(t(($) => $.page.agent_link_no_access));
+            return;
+          }
+          setSelectedAgentId(runtimeAgent.id);
           setSelectedProjectId(projectId);
           setActiveSession(null);
         }
@@ -859,12 +826,13 @@ export function useChatController(opts?: { isActive?: boolean }) {
       activeProjectId,
       activeSessionId,
       currentSession,
+      availableAgents,
       setSessionProject,
       setSelectedAgentId,
-      setSelectedRuntimeId,
       setSelectedProjectId,
       setActiveSession,
       requestInputFocus,
+      t,
     ],
   );
 
@@ -905,8 +873,6 @@ export function useChatController(opts?: { isActive?: boolean }) {
     availableAgents,
     agentsSettled,
     runtimes,
-    availableRuntimes,
-    runtimesSettled: runtimesLoaded && membersLoaded,
     sessions,
     projects,
     activeSessionId,
@@ -916,7 +882,6 @@ export function useChatController(opts?: { isActive?: boolean }) {
     projectContextUnsupported: projectContextSupport === false,
     isProjectUpdating:
       setSessionProject.isPending || (!!activeSessionId && !currentSession),
-    isCreatingSession: createSession.isPending,
     currentSession,
     isSessionArchived,
     isAgentArchived,
@@ -948,7 +913,6 @@ export function useChatController(opts?: { isActive?: boolean }) {
     uploadEnabled,
     handleNewChat,
     handleStartNewChat,
-    handleStartNewRuntimeChat,
     handleSelectSession,
     handleProjectChange,
     advanceSelectionAfterArchive,

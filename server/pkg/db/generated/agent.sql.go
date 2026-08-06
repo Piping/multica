@@ -2082,42 +2082,90 @@ func (q *Queries) CreateRetryTask(ctx context.Context, arg CreateRetryTaskParams
 	return i, err
 }
 
-const createRuntimeChatCarrier = `-- name: CreateRuntimeChatCarrier :one
+const deleteSystemAgentByID = `-- name: DeleteSystemAgentByID :exec
+DELETE FROM agent
+WHERE id = $1
+  AND kind = 'system'
+  AND (
+    system_key LIKE 'agent_builder:%'
+    OR system_key LIKE 'runtime_chat:%'
+  )
+`
+
+// Builder and direct-runtime chat sessions own their hidden execution agent.
+// Deleting the session removes that carrier and its task rows; the kind and
+// explicit key-prefix guards prevent this path from deleting user agents or
+// unrelated system agents.
+func (q *Queries) DeleteSystemAgentByID(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSystemAgentByID, id)
+	return err
+}
+
+const ensureRuntimeDefaultAgent = `-- name: EnsureRuntimeDefaultAgent :one
 INSERT INTO agent (
     workspace_id, name, description, runtime_mode, runtime_config, runtime_id,
     visibility, permission_mode, max_concurrent_tasks, owner_id, instructions,
     custom_env, custom_args, kind, system_key
 ) VALUES (
     $1, $2, '', $3, '{}'::jsonb, $4,
-    'private', 'private', 1, $5, $6,
-    '{}'::jsonb, '[]'::jsonb, 'system', $7
+    $5, $6, 6, $7, '',
+    '{}'::jsonb, '[]'::jsonb, 'user', 'runtime_default'
 )
+ON CONFLICT (runtime_id)
+    WHERE system_key = 'runtime_default'
+DO UPDATE SET
+    name = EXCLUDED.name,
+    description = '',
+    avatar_url = NULL,
+    runtime_mode = EXCLUDED.runtime_mode,
+    runtime_config = '{}'::jsonb,
+    runtime_id = EXCLUDED.runtime_id,
+    visibility = EXCLUDED.visibility,
+    permission_mode = EXCLUDED.permission_mode,
+    max_concurrent_tasks = 6,
+    owner_id = EXCLUDED.owner_id,
+    instructions = '',
+    custom_env = '{}'::jsonb,
+    custom_args = '[]'::jsonb,
+    mcp_config = NULL,
+    model = NULL,
+    thinking_level = NULL,
+    service_tier = NULL,
+    composio_toolkit_allowlist = NULL,
+    disabled_runtime_skills = '[]'::jsonb,
+    archived_at = NULL,
+    archived_by = NULL,
+    updated_at = now()
 RETURNING id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, runtime_id, instructions, archived_at, archived_by, custom_env, custom_args, mcp_config, model, thinking_level, composio_toolkit_allowlist, permission_mode, kind, system_key, disabled_runtime_skills, service_tier
 `
 
-type CreateRuntimeChatCarrierParams struct {
-	WorkspaceID  pgtype.UUID `json:"workspace_id"`
-	Name         string      `json:"name"`
-	RuntimeMode  string      `json:"runtime_mode"`
-	RuntimeID    pgtype.UUID `json:"runtime_id"`
-	OwnerID      pgtype.UUID `json:"owner_id"`
-	Instructions string      `json:"instructions"`
-	SystemKey    pgtype.Text `json:"system_key"`
+type EnsureRuntimeDefaultAgentParams struct {
+	WorkspaceID    pgtype.UUID `json:"workspace_id"`
+	Name           string      `json:"name"`
+	RuntimeMode    string      `json:"runtime_mode"`
+	RuntimeID      pgtype.UUID `json:"runtime_id"`
+	Visibility     string      `json:"visibility"`
+	PermissionMode string      `json:"permission_mode"`
+	OwnerID        pgtype.UUID `json:"owner_id"`
 }
 
-// One hidden execution carrier per direct runtime chat. The user chooses an
-// available runtime rather than a reusable persona agent; keeping the carrier
-// session-scoped preserves the existing agent-backed task pipeline without
-// leaking an implementation detail into agent lists or assignment surfaces.
-func (q *Queries) CreateRuntimeChatCarrier(ctx context.Context, arg CreateRuntimeChatCarrierParams) (Agent, error) {
-	row := q.db.QueryRow(ctx, createRuntimeChatCarrier,
+// Every runtime owns one visible vanilla agent. It is a normal `kind = 'user'`
+// row so chat pickers, Agent management, and issue assignment all use the same
+// entity. system_key marks the row as runtime-managed without hiding it.
+//
+// The conflict target is the existing partial identity index from migration
+// 172. Registration calls this on every upsert, so the update side repairs
+// names, ownership, runtime mode, and access after reconnects or metadata
+// changes while preserving the intentionally empty persona configuration.
+func (q *Queries) EnsureRuntimeDefaultAgent(ctx context.Context, arg EnsureRuntimeDefaultAgentParams) (Agent, error) {
+	row := q.db.QueryRow(ctx, ensureRuntimeDefaultAgent,
 		arg.WorkspaceID,
 		arg.Name,
 		arg.RuntimeMode,
 		arg.RuntimeID,
+		arg.Visibility,
+		arg.PermissionMode,
 		arg.OwnerID,
-		arg.Instructions,
-		arg.SystemKey,
 	)
 	var i Agent
 	err := row.Scan(
@@ -2151,25 +2199,6 @@ func (q *Queries) CreateRuntimeChatCarrier(ctx context.Context, arg CreateRuntim
 		&i.ServiceTier,
 	)
 	return i, err
-}
-
-const deleteSystemAgentByID = `-- name: DeleteSystemAgentByID :exec
-DELETE FROM agent
-WHERE id = $1
-  AND kind = 'system'
-  AND (
-    system_key LIKE 'agent_builder:%'
-    OR system_key LIKE 'runtime_chat:%'
-  )
-`
-
-// Builder and direct-runtime chat sessions own their hidden execution agent.
-// Deleting the session removes that carrier and its task rows; the kind and
-// explicit key-prefix guards prevent this path from deleting user agents or
-// unrelated system agents.
-func (q *Queries) DeleteSystemAgentByID(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteSystemAgentByID, id)
-	return err
 }
 
 const expireStaleQueuedTasks = `-- name: ExpireStaleQueuedTasks :many
@@ -4208,6 +4237,62 @@ func (q *Queries) ListQueuedClaimCandidatesByRuntimes(ctx context.Context, runti
 			&i.RetiredSessionID,
 			&i.QuickActionsDisabled,
 			&i.RegenerateQuickActionsFor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRuntimeDefaultAgentsByRuntimeIDs = `-- name: ListRuntimeDefaultAgentsByRuntimeIDs :many
+SELECT id, workspace_id, name, avatar_url, runtime_mode, runtime_config, visibility, status, max_concurrent_tasks, owner_id, created_at, updated_at, description, runtime_id, instructions, archived_at, archived_by, custom_env, custom_args, mcp_config, model, thinking_level, composio_toolkit_allowlist, permission_mode, kind, system_key, disabled_runtime_skills, service_tier FROM agent
+WHERE runtime_id = ANY($1::uuid[])
+  AND kind = 'user'
+  AND system_key = 'runtime_default'
+`
+
+func (q *Queries) ListRuntimeDefaultAgentsByRuntimeIDs(ctx context.Context, runtimeIds []pgtype.UUID) ([]Agent, error) {
+	rows, err := q.db.Query(ctx, listRuntimeDefaultAgentsByRuntimeIDs, runtimeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Agent{}
+	for rows.Next() {
+		var i Agent
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.AvatarUrl,
+			&i.RuntimeMode,
+			&i.RuntimeConfig,
+			&i.Visibility,
+			&i.Status,
+			&i.MaxConcurrentTasks,
+			&i.OwnerID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Description,
+			&i.RuntimeID,
+			&i.Instructions,
+			&i.ArchivedAt,
+			&i.ArchivedBy,
+			&i.CustomEnv,
+			&i.CustomArgs,
+			&i.McpConfig,
+			&i.Model,
+			&i.ThinkingLevel,
+			&i.ComposioToolkitAllowlist,
+			&i.PermissionMode,
+			&i.Kind,
+			&i.SystemKey,
+			&i.DisabledRuntimeSkills,
+			&i.ServiceTier,
 		); err != nil {
 			return nil, err
 		}

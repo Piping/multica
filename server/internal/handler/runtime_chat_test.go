@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -17,8 +16,7 @@ func TestRuntimeChatSessionLifecycle(t *testing.T) {
 		_, _ = testPool.Exec(context.Background(), `
 			DELETE FROM agent
 			WHERE workspace_id = $1
-			  AND kind = 'system'
-			  AND system_key LIKE 'runtime_chat:%'
+			  AND system_key = 'runtime_default'
 		`, testWorkspaceID)
 	})
 
@@ -46,20 +44,20 @@ func TestRuntimeChatSessionLifecycle(t *testing.T) {
 	if created.RuntimeID == nil || *created.RuntimeID != testRuntimeID {
 		t.Fatalf("runtime_id = %v, want %s", created.RuntimeID, testRuntimeID)
 	}
-	if !created.RuntimeDirect {
-		t.Fatal("runtime_direct = false, want true")
+	if created.RuntimeDirect {
+		t.Fatal("runtime_direct = true, want a normal Agent-backed session")
 	}
 
-	var kind, systemKey string
+	var kind, systemKey, instructions string
 	if err := testPool.QueryRow(context.Background(), `
-		SELECT kind, system_key
+		SELECT kind, system_key, instructions
 		FROM agent
 		WHERE id = $1
-	`, created.AgentID).Scan(&kind, &systemKey); err != nil {
-		t.Fatalf("load runtime carrier: %v", err)
+	`, created.AgentID).Scan(&kind, &systemKey, &instructions); err != nil {
+		t.Fatalf("load runtime default agent: %v", err)
 	}
-	if kind != "system" || !strings.HasPrefix(systemKey, "runtime_chat:") {
-		t.Fatalf("unexpected carrier kind=%q system_key=%q", kind, systemKey)
+	if kind != "user" || systemKey != "runtime_default" || instructions != "" {
+		t.Fatalf("unexpected vanilla agent kind=%q system_key=%q instructions=%q", kind, systemKey, instructions)
 	}
 
 	listW := httptest.NewRecorder()
@@ -80,8 +78,8 @@ func TestRuntimeChatSessionLifecycle(t *testing.T) {
 			continue
 		}
 		found = true
-		if !session.RuntimeDirect {
-			t.Fatal("listed runtime session lost runtime_direct")
+		if session.RuntimeDirect {
+			t.Fatal("listed vanilla Agent session was marked runtime_direct")
 		}
 	}
 	if !found {
@@ -99,8 +97,8 @@ func TestRuntimeChatSessionLifecycle(t *testing.T) {
 		if err := json.NewDecoder(responseW.Body).Decode(&response); err != nil {
 			t.Fatalf("%s: decode response: %v", name, err)
 		}
-		if !response.RuntimeDirect {
-			t.Fatalf("%s: runtime_direct = false, want true", name)
+		if response.RuntimeDirect {
+			t.Fatalf("%s: runtime_direct = true, want false", name)
 		}
 		if response.RuntimeID == nil || *response.RuntimeID != testRuntimeID {
 			t.Fatalf("%s: runtime_id = %v, want %s", name, response.RuntimeID, testRuntimeID)
@@ -141,10 +139,34 @@ func TestRuntimeChatSessionLifecycle(t *testing.T) {
 	if err := json.NewDecoder(agentsW.Body).Decode(&agents); err != nil {
 		t.Fatalf("decode agent list: %v", err)
 	}
+	foundAgent := false
 	for _, agent := range agents {
-		if agent.ID == created.AgentID {
-			t.Fatal("runtime chat carrier leaked into user-facing agent list")
+		if agent.ID != created.AgentID {
+			continue
 		}
+		foundAgent = true
+		if !agent.RuntimeManaged {
+			t.Fatal("runtime vanilla Agent is not marked runtime_managed")
+		}
+		if agent.Instructions != "" || len(agent.Skills) != 0 || agent.Model != "" {
+			t.Fatalf("runtime vanilla Agent has custom context: %+v", agent)
+		}
+	}
+	if !foundAgent {
+		t.Fatal("runtime vanilla Agent missing from user-facing Agent list")
+	}
+
+	updateW := httptest.NewRecorder()
+	updateReq := withURLParams(
+		newRequest(http.MethodPut, "/api/agents/"+created.AgentID, map[string]any{
+			"instructions": "inject context",
+		}),
+		"id",
+		created.AgentID,
+	)
+	testHandler.UpdateAgent(updateW, updateReq)
+	if updateW.Code != http.StatusConflict {
+		t.Fatalf("UpdateAgent(runtime-managed): expected 409, got %d: %s", updateW.Code, updateW.Body.String())
 	}
 
 	deleteW := httptest.NewRecorder()
@@ -164,9 +186,9 @@ func TestRuntimeChatSessionLifecycle(t *testing.T) {
 		`SELECT count(*) FROM agent WHERE id = $1`,
 		created.AgentID,
 	).Scan(&remaining); err != nil {
-		t.Fatalf("count deleted carrier: %v", err)
+		t.Fatalf("count runtime default agent: %v", err)
 	}
-	if remaining != 0 {
-		t.Fatal("runtime chat carrier survived session deletion")
+	if remaining != 1 {
+		t.Fatal("deleting a chat session removed its reusable runtime Agent")
 	}
 }

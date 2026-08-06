@@ -2442,6 +2442,9 @@ func (h *Handler) SetAgentSkills(w http.ResponseWriter, r *http.Request) {
 	if !h.canManageAgent(w, r, agent) {
 		return
 	}
+	if rejectRuntimeManagedAgentMutation(w, agent) {
+		return
+	}
 
 	var req SetAgentSkillsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -2497,6 +2500,9 @@ func (h *Handler) AddAgentSkills(w http.ResponseWriter, r *http.Request) {
 	if !h.canManageAgent(w, r, agent) {
 		return
 	}
+	if rejectRuntimeManagedAgentMutation(w, agent) {
+		return
+	}
 
 	var req AddAgentSkillsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -2546,6 +2552,9 @@ func (h *Handler) SetAgentSkillEnabled(w http.ResponseWriter, r *http.Request) {
 	if !h.canManageAgent(w, r, agent) {
 		return
 	}
+	if rejectRuntimeManagedAgentMutation(w, agent) {
+		return
+	}
 
 	skillID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "skillId"), "skill_id")
 	if !ok {
@@ -2582,6 +2591,9 @@ func (h *Handler) RemoveAgentSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.canManageAgent(w, r, agent) {
+		return
+	}
+	if rejectRuntimeManagedAgentMutation(w, agent) {
 		return
 	}
 	skillID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "skillId"), "skill_id")

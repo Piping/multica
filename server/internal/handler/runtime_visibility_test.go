@@ -299,6 +299,31 @@ func TestUpdateAgentRuntime_VisibilityPatchApplies(t *testing.T) {
 	if resp.Visibility != "public" {
 		t.Fatalf("visibility patch: got %q, want public", resp.Visibility)
 	}
+	var (
+		permissionMode string
+		visibility     string
+		targetCount    int
+	)
+	if err := testPool.QueryRow(context.Background(), `
+		SELECT
+			agent.permission_mode,
+			agent.visibility,
+			(
+				SELECT count(*)
+				FROM agent_invocation_target target
+				WHERE target.agent_id = agent.id
+				  AND target.target_type = 'workspace'
+				  AND target.target_id = agent.workspace_id
+			)
+		FROM agent
+		WHERE runtime_id = $1 AND system_key = 'runtime_default'
+	`, runtimeID).Scan(&permissionMode, &visibility, &targetCount); err != nil {
+		t.Fatalf("load public runtime Agent: %v", err)
+	}
+	if permissionMode != "public_to" || visibility != "workspace" || targetCount != 1 {
+		t.Fatalf("public runtime Agent access = %s/%s targets=%d, want public_to/workspace/1",
+			permissionMode, visibility, targetCount)
+	}
 }
 
 // TestUpdateAgentRuntime_IgnoresTimezoneField guards the RFC migration that
