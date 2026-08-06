@@ -2,6 +2,7 @@
   "page": {
     "breadcrumb_title": "이슈",
     "breadcrumb_workspace_fallback": "워크스페이스",
+    "new_issue": "새 이슈",
     "empty_title": "아직 이슈가 없습니다",
     "empty_hint": "이슈를 만들어 시작하세요.",
     "move_failed": "이슈를 이동하지 못했습니다"

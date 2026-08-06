@@ -2,6 +2,7 @@
   "page": {
     "breadcrumb_title": "イシュー",
     "breadcrumb_workspace_fallback": "ワークスペース",
+    "new_issue": "新規イシュー",
     "empty_title": "まだイシューがありません",
     "empty_hint": "イシューを作成して始めましょう。",
     "move_failed": "イシューを移動できませんでした"

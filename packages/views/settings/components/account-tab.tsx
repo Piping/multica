@@ -1,12 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { LogOut } from "lucide-react";
 import { Input } from "@multica/ui/components/ui/input";
 import { Textarea } from "@multica/ui/components/ui/textarea";
+import { Button } from "@multica/ui/components/ui/button";
+import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
 import { toast } from "sonner";
 import { useAuthStore } from "@multica/core/auth";
 import { api } from "@multica/core/api";
+import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
 import { AvatarUploadControl } from "../../common/avatar-upload-control";
+import { useLogout } from "../../auth";
 import { useT } from "../../i18n";
 import {
   SettingsCard,
@@ -36,6 +41,7 @@ export function AccountTab() {
   const { t } = useT("settings");
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
+  const logout = useLogout();
 
   const [profileName, setProfileName] = useState(user?.name ?? "");
   const [profileDescription, setProfileDescription] = useState(
@@ -93,6 +99,37 @@ export function AccountTab() {
 
   return (
     <SettingsTab title={t(($) => $.page.tabs.profile)}>
+      <SettingsSection title={t(($) => $.account.section_session)}>
+        <SettingsCard>
+          <SettingsRow
+            label={t(($) => $.account.signed_in_as)}
+            description={user?.email}
+            size="none"
+          >
+            <div className="flex items-center justify-start gap-3 sm:justify-end">
+              <ActorAvatar
+                name={user?.name ?? ""}
+                initials={(user?.name ?? "U").charAt(0).toUpperCase()}
+                avatarUrl={resolvePublicFileUrl(user?.avatar_url)}
+                size="sm"
+              />
+              <span className="max-w-48 truncate text-body font-medium">
+                {user?.name ?? user?.email}
+              </span>
+            </div>
+          </SettingsRow>
+          <SettingsRow
+            label={t(($) => $.account.log_out_title)}
+            description={t(($) => $.account.log_out_description)}
+          >
+            <Button type="button" variant="outline" size="sm" onClick={logout}>
+              <LogOut aria-hidden="true" className="size-3.5" />
+              {t(($) => $.account.log_out_button)}
+            </Button>
+          </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
+
       <SettingsSection
         title={t(($) => $.account.section_profile)}
         action={

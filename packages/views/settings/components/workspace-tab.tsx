@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LogOut } from "lucide-react";
+import { Check, LogOut, Plus } from "lucide-react";
 import { Input } from "@multica/ui/components/ui/input";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Button } from "@multica/ui/components/ui/button";
@@ -18,6 +18,8 @@ import {
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
+import { useConfigStore } from "@multica/core/config";
+import { useModalStore } from "@multica/core/modals";
 import { useLeaveWorkspace, useDeleteWorkspace } from "@multica/core/workspace/mutations";
 import {
   memberListOptions,
@@ -28,12 +30,14 @@ import { issueKeys } from "@multica/core/issues/queries";
 import { api } from "@multica/core/api";
 import {
   resolvePostAuthDestination,
+  paths,
   useCurrentWorkspace,
   useHasOnboarded,
 } from "@multica/core/paths";
 import { setCurrentWorkspace } from "@multica/core/platform";
 import type { Workspace } from "@multica/core/types";
 import { AvatarUploadControl } from "../../common/avatar-upload-control";
+import { WorkspaceAvatar } from "../../workspace/workspace-avatar";
 import { useNavigation } from "../../navigation";
 import { DeleteWorkspaceDialog } from "./delete-workspace-dialog";
 import { useT } from "../../i18n";
@@ -79,11 +83,15 @@ export function WorkspaceTab() {
     ...memberListOptions(wsId ?? ""),
     enabled: !!wsId,
   });
+  const { data: workspaces = [] } = useQuery(workspaceListOptions());
   const qc = useQueryClient();
   const leaveWorkspace = useLeaveWorkspace();
   const deleteWorkspace = useDeleteWorkspace();
   const navigation = useNavigation();
   const hasOnboarded = useHasOnboarded();
+  const workspaceCreationDisabled = useConfigStore(
+    (state) => state.workspaceCreationDisabled,
+  );
 
   /**
    * Send the user to a safe URL, computed from the current cached workspace
@@ -302,6 +310,67 @@ export function WorkspaceTab() {
 
   return (
     <SettingsTab title={t(($) => $.page.tabs.general)}>
+      <SettingsSection
+        title={t(($) => $.workspace.section_access)}
+        description={t(($) => $.workspace.section_access_description)}
+        action={
+          !workspaceCreationDisabled ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                useModalStore.getState().open("create-workspace")
+              }
+            >
+              <Plus aria-hidden="true" className="size-3.5" />
+              {t(($) => $.workspace.create_button)}
+            </Button>
+          ) : null
+        }
+      >
+        <SettingsCard>
+          {workspaces.map((candidate) => {
+            const current = candidate.id === workspace.id;
+            return (
+              <SettingsRow
+                key={candidate.id}
+                label={
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <WorkspaceAvatar
+                      name={candidate.name}
+                      avatarUrl={candidate.avatar_url}
+                      size="sm"
+                    />
+                    <span className="truncate">{candidate.name}</span>
+                  </span>
+                }
+                description={candidate.slug}
+              >
+                <Button
+                  type="button"
+                  variant={current ? "ghost" : "outline"}
+                  size="sm"
+                  disabled={current}
+                  onClick={() =>
+                    navigation.push(
+                      paths.workspace(candidate.slug).settings(),
+                    )
+                  }
+                >
+                  {current ? (
+                    <Check aria-hidden="true" className="size-3.5" />
+                  ) : null}
+                  {current
+                    ? t(($) => $.workspace.current_button)
+                    : t(($) => $.workspace.switch_button)}
+                </Button>
+              </SettingsRow>
+            );
+          })}
+        </SettingsCard>
+      </SettingsSection>
+
       <SettingsSection
         title={t(($) => $.workspace.section_general)}
         action={

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Issue } from "@multica/core/types";
 import { I18nProvider } from "@multica/core/i18n/react";
@@ -7,8 +7,12 @@ import enCommon from "../../locales/en/common.json";
 import enIssues from "../../locales/en/issues.json";
 
 const TEST_RESOURCES = { en: { common: enCommon, issues: enIssues } };
+const openCreateIssueWithPreference = vi.hoisted(() => vi.fn());
 vi.mock("@multica/core/hooks", () => ({
   useWorkspaceId: () => "ws-1",
+}));
+vi.mock("@multica/core/issues/stores/create-mode-store", () => ({
+  openCreateIssueWithPreference,
 }));
 
 // ---------------------------------------------------------------------------
@@ -771,6 +775,14 @@ describe("IssuesPage (shared)", () => {
     // The list header is now `icon + title`, matching the other list pages.
     // The workspace/org name is no longer rendered as a breadcrumb prefix.
     expect(screen.queryByText("Test WS")).not.toBeInTheDocument();
+  });
+
+  it("opens the preferred issue creation flow from the page header", () => {
+    renderWithQuery(<IssuesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New Issue" }));
+
+    expect(openCreateIssueWithPreference).toHaveBeenCalledTimes(1);
   });
 
   it("shows empty state when there are no issues", async () => {

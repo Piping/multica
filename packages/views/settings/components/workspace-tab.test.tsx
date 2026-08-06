@@ -9,6 +9,8 @@ import enSettings from "../../locales/en/settings.json";
 const mockUpdateWorkspace = vi.hoisted(() => vi.fn());
 const mockInvalidateQueries = vi.hoisted(() => vi.fn());
 const mockToastSuccess = vi.hoisted(() => vi.fn());
+const mockNavigationPush = vi.hoisted(() => vi.fn());
+const mockOpenModal = vi.hoisted(() => vi.fn());
 const workspaceRef = vi.hoisted(() => ({
   current: {
     id: "workspace-1",
@@ -23,9 +25,37 @@ const workspaceRef = vi.hoisted(() => ({
 const membersRef = vi.hoisted(() => ({
   current: [{ user_id: "user-1", role: "owner" as "owner" | "admin" | "member" }],
 }));
+const workspacesRef = vi.hoisted(() => ({
+  current: [
+    {
+      id: "workspace-1",
+      name: "Test Workspace",
+      slug: "test-workspace",
+      description: "",
+      context: "",
+      issue_prefix: "TES",
+      repos: [] as { url: string }[],
+    },
+    {
+      id: "workspace-2",
+      name: "Other Workspace",
+      slug: "other-workspace",
+      description: "",
+      context: "",
+      issue_prefix: "OTH",
+      repos: [] as { url: string }[],
+    },
+  ],
+}));
 
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: membersRef.current, isFetched: true }),
+  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => ({
+    data:
+      queryKey[0] === "workspaces" && queryKey[1] === "list"
+        ? workspacesRef.current
+        : membersRef.current,
+    isFetched: true,
+  }),
   useQueryClient: () => ({
     setQueryData: vi.fn(),
     getQueryData: vi.fn(() => []),
@@ -34,6 +64,11 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 
 vi.mock("@multica/core/paths", () => ({
+  paths: {
+    workspace: (slug: string) => ({
+      settings: () => `/${slug}/settings`,
+    }),
+  },
   useCurrentWorkspace: () => workspaceRef.current,
   useHasOnboarded: () => true,
   resolvePostAuthDestination: () => "/",
@@ -45,8 +80,23 @@ vi.mock("@multica/core/platform", () => ({
 
 vi.mock("@multica/core/workspace/queries", () => ({
   memberListOptions: () => ({ queryKey: ["members"], queryFn: vi.fn() }),
-  workspaceListOptions: () => ({ queryKey: ["workspaces"], queryFn: vi.fn() }),
-  workspaceKeys: { list: () => ["workspaces"] },
+  workspaceListOptions: () => ({
+    queryKey: ["workspaces", "list"],
+    queryFn: vi.fn(),
+  }),
+  workspaceKeys: { list: () => ["workspaces", "list"] },
+}));
+
+vi.mock("@multica/core/config", () => ({
+  useConfigStore: (
+    selector: (state: { workspaceCreationDisabled: boolean }) => unknown,
+  ) => selector({ workspaceCreationDisabled: false }),
+}));
+
+vi.mock("@multica/core/modals", () => ({
+  useModalStore: {
+    getState: () => ({ open: mockOpenModal }),
+  },
 }));
 
 vi.mock("@multica/core/issues/queries", () => ({
@@ -75,7 +125,7 @@ vi.mock("@multica/core/auth", () => {
 });
 
 vi.mock("../../navigation", () => ({
-  useNavigation: () => ({ push: vi.fn() }),
+  useNavigation: () => ({ push: mockNavigationPush }),
 }));
 
 vi.mock("./delete-workspace-dialog", () => ({
@@ -137,6 +187,26 @@ describe("WorkspaceTab — automatic updates", () => {
     const input = screen.getByPlaceholderText("TES") as HTMLInputElement;
     expect(input.value).toBe("TES");
     expect(screen.queryByRole("button", { name: /^Save$/ })).toBeNull();
+  });
+
+  it("switches workspaces from General settings", async () => {
+    const user = setupUser();
+    render(<WorkspaceTab />, { wrapper: I18nWrapper });
+
+    await user.click(screen.getByRole("button", { name: "Switch" }));
+
+    expect(mockNavigationPush).toHaveBeenCalledWith(
+      "/other-workspace/settings",
+    );
+  });
+
+  it("opens workspace creation from General settings", async () => {
+    const user = setupUser();
+    render(<WorkspaceTab />, { wrapper: I18nWrapper });
+
+    await user.click(screen.getByRole("button", { name: "New workspace" }));
+
+    expect(mockOpenModal).toHaveBeenCalledWith("create-workspace");
   });
 
   it("renders the workspace slug in the shared read-only input control", () => {

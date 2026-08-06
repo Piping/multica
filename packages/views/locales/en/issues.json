@@ -2,6 +2,7 @@
   "page": {
     "breadcrumb_title": "Issues",
     "breadcrumb_workspace_fallback": "Workspace",
+    "new_issue": "New Issue",
     "empty_title": "No issues yet",
     "empty_hint": "Create an issue to get started.",
     "move_failed": "Failed to move issue"

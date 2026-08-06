@@ -298,6 +298,11 @@
     }
   },
   "account": {
+    "section_session": "계정 세션",
+    "signed_in_as": "로그인 계정",
+    "log_out_title": "로그아웃",
+    "log_out_description": "현재 세션을 종료하고 로그인 화면으로 돌아갑니다.",
+    "log_out_button": "로그아웃",
     "section_profile": "개인 정보",
     "avatar_label": "아바타",
     "click_avatar_hint": "클릭해서 아바타 업로드",
@@ -398,6 +403,11 @@
     }
   },
   "workspace": {
+    "section_access": "워크스페이스",
+    "section_access_description": "이 창에서 사용할 워크스페이스를 전환하거나 새로 만듭니다.",
+    "create_button": "새 워크스페이스",
+    "current_button": "현재",
+    "switch_button": "전환",
     "section_general": "워크스페이스 정보",
     "logo_label": "워크스페이스 로고",
     "change_logo_aria": "워크스페이스 로고 변경",

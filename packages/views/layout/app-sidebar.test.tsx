@@ -228,24 +228,23 @@ describe("PinRow", () => {
   });
 });
 
-describe("workspace identity", () => {
-  it("shows only the current workspace as non-interactive identity", () => {
+describe("sidebar ownership", () => {
+  it("keeps workspace and account controls out of the sidebar", () => {
     const { container } = render(<AppSidebar />);
-    const identity = container.querySelector('[data-sidebar="workspace-identity"]');
 
-    expect(identity).not.toBeNull();
-    expect(identity).toHaveTextContent("Acme");
-    expect(identity?.closest("button")).toBeNull();
-    expect(screen.queryByText("Other WS")).not.toBeInTheDocument();
-    expect(container.querySelector('[href="/other/issues"]')).toBeNull();
+    expect(
+      container.querySelector('[data-sidebar="workspace-identity"]'),
+    ).toBeNull();
+    expect(screen.queryByText("Acme")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ada")).not.toBeInTheDocument();
+    expect(screen.queryByText("ada@example.com")).not.toBeInTheDocument();
+    expect(document.querySelector('[data-variant="destructive"]')).toBeNull();
   });
 
-  it("keeps account details and logout in the footer menu", () => {
+  it("keeps New Issue out of the sidebar", () => {
     render(<AppSidebar />);
 
-    expect(screen.getAllByText("Ada")).not.toHaveLength(0);
-    expect(screen.getByText("ada@example.com")).toBeInTheDocument();
-    expect(document.querySelector('[data-variant="destructive"]')).not.toBeNull();
+    expect(screen.queryByText("New Issue")).not.toBeInTheDocument();
   });
 });
 
@@ -279,6 +278,22 @@ describe("personal nav — Agent", () => {
     expect(container.querySelectorAll('button[data-href="/acme/chat"]')).toHaveLength(1);
     expect(container.querySelector('button[data-href="/acme/inbox"]')).toBeNull();
     expect(container.querySelector('button[data-href="/acme/my-issues"]')).toBeNull();
+  });
+
+  it("places Agent before the workspace navigation", () => {
+    const { container } = render(<AppSidebar />);
+    const agent = chatNav(container);
+    const issues = container.querySelector<HTMLElement>(
+      'button[data-href="/acme/issues"]',
+    );
+
+    expect(agent).not.toBeNull();
+    expect(issues).not.toBeNull();
+    if (!agent || !issues) throw new Error("Expected Agent and Issues links");
+    expect(
+      agent.compareDocumentPosition(issues) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("badges the Agent nav with the summed unread_count of chat sessions", () => {

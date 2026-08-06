@@ -298,6 +298,11 @@
     }
   },
   "account": {
+    "section_session": "账号会话",
+    "signed_in_as": "当前登录账号",
+    "log_out_title": "退出登录",
+    "log_out_description": "结束当前会话并返回登录页面。",
+    "log_out_button": "退出登录",
     "section_profile": "个人信息",
     "avatar_label": "头像",
     "click_avatar_hint": "点击上传头像",
@@ -398,6 +403,11 @@
     }
   },
   "workspace": {
+    "section_access": "工作区",
+    "section_access_description": "切换当前窗口使用的工作区，或新建工作区。",
+    "create_button": "新建工作区",
+    "current_button": "当前工作区",
+    "switch_button": "切换",
     "section_general": "工作区信息",
     "logo_label": "工作区标志",
     "change_logo_aria": "更换工作区图标",

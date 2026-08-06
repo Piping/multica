@@ -299,6 +299,11 @@
     }
   },
   "account": {
+    "section_session": "Account session",
+    "signed_in_as": "Signed in as",
+    "log_out_title": "Log out",
+    "log_out_description": "End this session and return to the login screen.",
+    "log_out_button": "Log out",
     "section_profile": "Personal information",
     "avatar_label": "Avatar",
     "click_avatar_hint": "Click to upload avatar",
@@ -399,6 +404,11 @@
     }
   },
   "workspace": {
+    "section_access": "Workspaces",
+    "section_access_description": "Switch the workspace used by this window or create another one.",
+    "create_button": "New workspace",
+    "current_button": "Current",
+    "switch_button": "Switch",
     "section_general": "Workspace details",
     "logo_label": "Workspace logo",
     "change_logo_aria": "Change workspace logo",

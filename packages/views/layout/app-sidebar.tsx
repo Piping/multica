@@ -18,18 +18,12 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from "@dnd-kit/utilities";
 import {
   ChevronRight,
-  LogOut,
-  SquarePen,
   X,
 } from "lucide-react";
-import { WorkspaceAvatar } from "../workspace/workspace-avatar";
-import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@multica/ui/components/ui/tooltip";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@multica/ui/components/ui/collapsible";
 import { CappedNumberFlow } from "@multica/ui/components/ui/number-flow";
 import { StatusIcon } from "../issues/components/status-icon";
-import { useIssueDraftStore } from "@multica/core/issues/stores/draft-store";
-import { openCreateIssueWithPreference } from "@multica/core/issues/stores/create-mode-store";
 import {
   Sidebar,
   SidebarContent,
@@ -43,16 +37,8 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@multica/ui/components/ui/sidebar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@multica/ui/components/ui/dropdown-menu";
-import { useAuthStore } from "@multica/core/auth";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
-import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
+import { useAuthStore } from "@multica/core/auth";
 import { useQuery } from "@tanstack/react-query";
 import { chatSessionsOptions } from "@multica/core/chat/queries";
 import { countUnreadChatMessages } from "@multica/core/chat/unread";
@@ -63,14 +49,9 @@ import { useDeletePin, useReorderPins } from "@multica/core/pins/mutations";
 import { issueDetailOptions } from "@multica/core/issues/queries";
 import { projectDetailOptions } from "@multica/core/projects/queries";
 import type { PinnedItem } from "@multica/core/types";
-import { useLogout } from "../auth";
 import { ProjectIcon } from "../projects/components/project-icon";
 import { routeIconForPath } from "./route-icon-components";
 import { useT } from "../i18n";
-import {
-  useShortcut,
-} from "@multica/core/shortcuts";
-import { ShortcutKeycaps } from "../common/shortcut-keycaps";
 import { useAppForeground } from "../common/use-app-foreground";
 
 // Top-level nav items stay active when the user is on a child route
@@ -120,10 +101,6 @@ type NavLabelKey =
 // Nav icons are NOT declared here: they are derived from each item's
 // destination path at render time, so the sidebar and the desktop tab bar
 // always agree. See route-icon-components.tsx.
-const personalNav: { key: NavKey; labelKey: NavLabelKey }[] = [
-  { key: "chat", labelKey: "agent_chat" },
-];
-
 const workspaceNav: { key: NavKey; labelKey: NavLabelKey }[] = [
   { key: "issues", labelKey: "issues" },
   { key: "projects", labelKey: "projects" },
@@ -138,12 +115,6 @@ const configureNav: { key: NavKey; labelKey: NavLabelKey }[] = [
   { key: "skills", labelKey: "skills" },
   { key: "settings", labelKey: "settings" },
 ];
-
-function DraftDot() {
-  const hasDraft = useIssueDraftStore((s) => s.hasDraft());
-  if (!hasDraft) return null;
-  return <span className="absolute top-0 right-0 size-1.5 rounded-full bg-brand" />;
-}
 
 /**
  * Presentational pin row. The `label` and `iconNode` are computed by the
@@ -337,9 +308,7 @@ export function AppSidebar({
 }: AppSidebarProps = {}) {
   const { t } = useT("layout");
   const { pathname } = useNavigation();
-  const user = useAuthStore((s) => s.user);
   const userId = useAuthStore((s) => s.user?.id);
-  const logout = useLogout();
   const workspace = useCurrentWorkspace();
   const p = useWorkspacePaths();
 
@@ -423,7 +392,8 @@ export function AppSidebar({
     [localPinned, reorderPins],
   );
 
-  const createIssueShortcut = useShortcut("createIssue");
+  const AgentIcon = routeIconForPath(chatHref);
+  const agentActive = isNavActive(pathname, chatHref);
 
   return (
       <Sidebar variant="inset">
@@ -431,78 +401,33 @@ export function AppSidebar({
         <SidebarHeader className={cn("py-3", headerClassName)} style={headerStyle}>
           <SidebarMenu>
             <SidebarMenuItem>
-              <div
-                data-sidebar="workspace-identity"
-                className="flex h-8 min-w-0 items-center gap-2 overflow-hidden px-2 text-body"
+              <SidebarMenuButton
+                size="lg"
+                isActive={agentActive}
+                render={<AppLink href={chatHref} />}
+                className="font-semibold text-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
               >
-                <WorkspaceAvatar
-                  name={workspace?.name ?? "M"}
-                  avatarUrl={workspace?.avatar_url}
-                  size="sm"
-                />
-                <span className="min-w-0 flex-1 truncate font-medium">
-                  {workspace?.name ?? "Multica"}
-                </span>
-              </div>
+                <AgentIcon className="!size-5" />
+                <span>{t(($) => $.nav.agent_chat)}</span>
+                {chatUnreadCount > 0 && (
+                  <CappedNumberFlow
+                    value={chatUnreadCount}
+                    animated={false}
+                    className="ml-auto text-caption"
+                  />
+                )}
+              </SidebarMenuButton>
             </SidebarMenuItem>
-          </SidebarMenu>
-          <SidebarMenu>
             {searchSlot && (
               <SidebarMenuItem>
                 {searchSlot}
               </SidebarMenuItem>
             )}
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                className="text-muted-foreground"
-                onClick={() => openCreateIssueWithPreference()}
-              >
-                <span className="relative">
-                  <SquarePen />
-                  <DraftDot />
-                </span>
-                <span>{t(($) => $.sidebar.new_issue)}</span>
-                {createIssueShortcut ? (
-                  <ShortcutKeycaps shortcut={createIssueShortcut} decorative className="pointer-events-none ml-auto" />
-                ) : null}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
 
         {/* Navigation */}
         <SidebarContent ref={sidebarScrollRef} style={sidebarFadeStyle}>
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-0.5">
-                {personalNav.map((item) => {
-                  const href = p[item.key]();
-                  const Icon = routeIconForPath(href);
-                  const isActive = isNavActive(pathname, href);
-                  return (
-                    <SidebarMenuItem key={item.key}>
-                      <SidebarMenuButton
-                        isActive={isActive}
-                        render={<AppLink href={href} />}
-                        className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
-                      >
-                        <Icon />
-                        <span>{t(($) => $.nav[item.labelKey])}</span>
-                        {item.key === "chat" && chatUnreadCount > 0 && (
-                          <CappedNumberFlow
-                            value={chatUnreadCount}
-                            animated={false}
-                            className="ml-auto text-caption"
-                          />
-                        )}
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
           {visiblePinned.length > 0 && (
             <Collapsible defaultOpen>
               <SidebarGroup className="group/pinned">
@@ -590,45 +515,6 @@ export function AppSidebar({
         </SidebarContent>
 
         <SidebarFooter className="p-2">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <SidebarMenuButton>
-                      <ActorAvatar
-                        name={user?.name ?? ""}
-                        initials={(user?.name ?? "U").charAt(0).toUpperCase()}
-                        avatarUrl={resolvePublicFileUrl(user?.avatar_url)}
-                        size="sm"
-                      />
-                      <span className="min-w-0 flex-1 truncate">
-                        {user?.name ?? user?.email}
-                      </span>
-                    </SidebarMenuButton>
-                  }
-                />
-                <DropdownMenuContent
-                  className="w-auto min-w-56"
-                  align="start"
-                  side="top"
-                  sideOffset={4}
-                >
-                  <div className="px-2 py-1.5">
-                    <p className="truncate text-body font-medium">{user?.name}</p>
-                    <p className="truncate text-caption text-muted-foreground">
-                      {user?.email}
-                    </p>
-                  </div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onClick={logout}>
-                    <LogOut className="size-3.5" />
-                    {t(($) => $.sidebar.log_out)}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </SidebarMenuItem>
-          </SidebarMenu>
           {/* One utility strip: the Discord link takes the leading space the
               help trigger was leaving empty. `justify-end` keeps the trigger
               right-aligned once the Discord link is dismissed. */}

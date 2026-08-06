@@ -1,6 +1,7 @@
 "use client";
 
-import { ListTodo } from "lucide-react";
+import { ListTodo, Plus } from "lucide-react";
+import { Button } from "@multica/ui/components/ui/button";
 import type {
   Issue,
   IssueTableFacetSpec,
@@ -8,8 +9,12 @@ import type {
   WorkingAgentSummary,
 } from "@multica/core/types";
 import { useIssuesScopeStore } from "@multica/core/issues/stores/issues-scope-store";
+import { openCreateIssueWithPreference } from "@multica/core/issues/stores/create-mode-store";
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
-import { PageHeader } from "../../layout/page-header";
+import {
+  CollectionPageHeader,
+  CollectionPageHeaderAction,
+} from "../../layout/collection-page";
 import { useT } from "../../i18n";
 import { IssueSurface } from "../surface/issue-surface";
 import { IssuesHeader } from "./issues-header";
@@ -52,10 +57,17 @@ export function IssuesPage() {
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
-      <PageHeader className="gap-2">
-        <ListTodo className="h-4 w-4 text-muted-foreground" />
-        <h1 className="text-body font-medium">{t(($) => $.page.breadcrumb_title)}</h1>
-      </PageHeader>
+      <CollectionPageHeader
+        icon={ListTodo}
+        title={t(($) => $.page.breadcrumb_title)}
+        actions={
+          <CollectionPageHeaderAction
+            icon={Plus}
+            label={t(($) => $.page.new_issue)}
+            onClick={() => openCreateIssueWithPreference()}
+          />
+        }
+      />
 
       <IssueSurface
         scope={{ type: "workspace", actorKind: scope }}
@@ -76,6 +88,16 @@ export function IssuesPage() {
             <ListTodo className="h-10 w-10 text-faint-foreground" />
             <p className="text-body">{t(($) => $.page.empty_title)}</p>
             <p className="text-caption">{t(($) => $.page.empty_hint)}</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-1"
+              onClick={() => openCreateIssueWithPreference()}
+            >
+              <Plus aria-hidden="true" className="size-3.5" />
+              {t(($) => $.page.new_issue)}
+            </Button>
           </div>
         )}
       />
