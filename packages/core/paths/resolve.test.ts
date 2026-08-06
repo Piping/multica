@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Workspace } from "../types";
 import { paths } from "./paths";
-import { resolvePostAuthDestination } from "./resolve";
+import {
+  resolvePostAuthDestination,
+  resolveWorkspaceStartPath,
+} from "./resolve";
 
 function makeWs(slug: string): Workspace {
   return {
@@ -35,6 +38,16 @@ describe("resolvePostAuthDestination", () => {
     const ws = [makeWs("acme"), makeWs("beta")];
     expect(resolvePostAuthDestination(ws, true)).toBe(
       paths.workspace("acme").issues(),
+    );
+  });
+
+  it("uses the configured Agent page for a workspace destination", () => {
+    const ws = [makeWs("acme")];
+    expect(resolvePostAuthDestination(ws, true, "agent")).toBe(
+      paths.workspace("acme").chat(),
+    );
+    expect(resolveWorkspaceStartPath("beta", "agent")).toBe(
+      paths.workspace("beta").chat(),
     );
   });
 

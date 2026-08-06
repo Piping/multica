@@ -204,5 +204,17 @@
     "delete": "チャットを削除",
     "archive": "チャットをアーカイブ",
     "unarchive": "アーカイブを解除"
+  },
+  "tools": {
+    "title": "セッションツール",
+    "toggle": "セッションツールを切り替え",
+    "files": "ファイル",
+    "html": "HTML",
+    "html_file": "HTML ファイル",
+    "no_files": "このセッションにファイルはありません",
+    "no_files_hint": "メッセージに添付されたファイルがここに表示されます。",
+    "no_html": "HTML プレビューはありません",
+    "no_html_hint": "このセッションで HTML ファイルを添付または生成するとプレビューできます。",
+    "download_file": "{{name}}をダウンロード"
   }
 }

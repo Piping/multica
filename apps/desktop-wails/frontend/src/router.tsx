@@ -9,10 +9,13 @@ import {
 } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
+import { useStartPageStore } from "@multica/core/navigation";
 import {
   paths,
   resolvePostAuthDestination,
+  resolveWorkspaceStartPath,
   useHasOnboarded,
+  useRequiredWorkspaceSlug,
 } from "@multica/core/paths";
 import { workspaceListOptions } from "@multica/core/workspace/queries";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
@@ -59,6 +62,7 @@ function RootRedirect() {
   const user = useAuthStore((state) => state.user);
   const loading = useAuthStore((state) => state.isLoading);
   const onboarded = useHasOnboarded();
+  const startPage = useStartPageStore((state) => state.startPage);
   const { data: workspaces = [], isFetched } = useQuery({
     ...workspaceListOptions(),
     enabled: !!user,
@@ -71,16 +75,22 @@ function RootRedirect() {
       return;
     }
     if (!isFetched) return;
-    navigate(resolvePostAuthDestination(workspaces, onboarded), {
+    navigate(resolvePostAuthDestination(workspaces, onboarded, startPage), {
       replace: true,
     });
-  }, [isFetched, loading, navigate, onboarded, user, workspaces]);
+  }, [isFetched, loading, navigate, onboarded, startPage, user, workspaces]);
 
   return (
     <div className="flex h-svh items-center justify-center">
       <MulticaIcon className="size-6 animate-pulse" />
     </div>
   );
+}
+
+function WorkspaceIndexRedirect() {
+  const slug = useRequiredWorkspaceSlug();
+  const startPage = useStartPageStore((state) => state.startPage);
+  return <Navigate to={resolveWorkspaceStartPath(slug, startPage)} replace />;
 }
 
 function NativeWindowBridge() {
@@ -162,7 +172,7 @@ export function AppRouter() {
                   element={<AttachmentPreviewRoutePage />}
                 />
                 <Route element={<DashboardShell />}>
-                  <Route index element={<Navigate to="issues" replace />} />
+                  <Route index element={<WorkspaceIndexRedirect />} />
                   <Route path="issues" element={<IssuesPage />} />
                   <Route
                     path="issues/:id"

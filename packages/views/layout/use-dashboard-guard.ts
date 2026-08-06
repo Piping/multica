@@ -2,7 +2,10 @@
 
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigationStore } from "@multica/core/navigation";
+import {
+  useNavigationStore,
+  useStartPageStore,
+} from "@multica/core/navigation";
 import { useAuthStore } from "@multica/core/auth";
 import {
   paths,
@@ -50,6 +53,7 @@ export function useDashboardGuard() {
   const isLoading = useAuthStore((s) => s.isLoading);
   const workspace = useCurrentWorkspace();
   const hasOnboarded = useHasOnboarded();
+  const startPage = useStartPageStore((state) => state.startPage);
   const { data: workspaces = [], isFetched: workspaceListFetched } = useQuery({
     ...workspaceListOptions(),
     enabled: !!user,
@@ -63,9 +67,9 @@ export function useDashboardGuard() {
     }
     if (!workspaceListFetched) return;
     if (!workspace) {
-      replace(resolvePostAuthDestination(workspaces, hasOnboarded));
+      replace(resolvePostAuthDestination(workspaces, hasOnboarded, startPage));
     }
-  }, [user, isLoading, workspaceListFetched, workspace, workspaces, hasOnboarded, replace]);
+  }, [user, isLoading, workspaceListFetched, workspace, workspaces, hasOnboarded, startPage, replace]);
 
   useEffect(() => {
     useNavigationStore.getState().onPathChange(pathname);

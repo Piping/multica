@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@multica/core/api";
 import { useAuthStore } from "@multica/core/auth";
+import { useStartPageStore } from "@multica/core/navigation";
 import {
   workspaceKeys,
   workspaceListOptions,
@@ -58,7 +59,12 @@ export function InvitePage({ invitationId, onBack }: InvitePageProps) {
   // page is a pre-workspace global route so we can't rely on WorkspaceSlugProvider.
   const { data: wsList = [] } = useQuery(workspaceListOptions());
   const hasOnboarded = useHasOnboarded();
-  const fallbackDest = resolvePostAuthDestination(wsList, hasOnboarded);
+  const startPage = useStartPageStore((state) => state.startPage);
+  const fallbackDest = resolvePostAuthDestination(
+    wsList,
+    hasOnboarded,
+    startPage,
+  );
 
   const handleAccept = async () => {
     setAccepting(true);

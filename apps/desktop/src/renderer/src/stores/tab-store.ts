@@ -3,7 +3,11 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { arrayMove } from "@dnd-kit/sortable";
 import { createPersistStorage, defaultStorage } from "@multica/core/platform";
 import { createSafeId } from "@multica/core/utils";
-import { isReservedSlug } from "@multica/core/paths";
+import { useStartPageStore, type StartPage } from "@multica/core/navigation";
+import {
+  isReservedSlug,
+  resolveWorkspaceStartPath,
+} from "@multica/core/paths";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -264,8 +268,9 @@ export function resourceKeyForUrl(url: string): string {
  *     was constructed without the workspace prefix. The router would
  *     interpret `issues` as a workspace slug → NoAccessPage.
  *
- * Normalizes: a bare `/{slug}` (no route segment) becomes `/{slug}/issues` —
- * the workspace's default surface. This replaces the old in-router
+ * Normalizes: a bare `/{slug}` (no route segment) becomes the configured
+ * workspace start surface (`/{slug}/issues` or `/{slug}/chat`). This replaces
+ * the old in-router
  * `<Navigate to="issues">` index redirect (MUL-4741 invariant 1: the router
  * never self-navigates; URLs are normalized before they become sessions).
  *
@@ -290,7 +295,7 @@ export function sanitizeTabPath(path: string): string | null {
     return null;
   }
   if (segments.length === 1) {
-    return `/${firstSegment}/issues${suffix}`;
+    return `${defaultPathFor(firstSegment)}${suffix}`;
   }
   return path;
 }
@@ -322,14 +327,17 @@ function pinnedBoundary(tabs: TabSession[]): number {
   return i;
 }
 
-/** Default entry point for a workspace — its issues list. */
-function defaultPathFor(slug: string): string {
-  return `/${slug}/issues`;
+/** Default entry point for a fresh workspace tab group. */
+export function defaultPathFor(
+  slug: string,
+  startPage: StartPage = useStartPageStore.getState().startPage,
+): string {
+  return resolveWorkspaceStartPath(slug, startPage);
 }
 
 function defaultTabFor(slug: string): TabSession {
   const path = defaultPathFor(slug);
-  return makeSession(path, "Issues");
+  return makeSession(path, path.endsWith("/chat") ? "Agent" : "Issues");
 }
 
 // ---------------------------------------------------------------------------
@@ -398,7 +406,10 @@ export const useTabStore = create<TabStore>()(
           // First time entering this workspace — create the group.
           const cleanDesired = desiredPath ? sanitizeTabPath(desiredPath) : null;
           const seedPath = cleanDesired ?? defaultPathFor(slug);
-          const tab = makeSession(seedPath, "Issues");
+          const tab = makeSession(
+            seedPath,
+            seedPath.endsWith("/chat") ? "Agent" : "Issues",
+          );
           set({
             activeWorkspaceSlug: slug,
             byWorkspace: {

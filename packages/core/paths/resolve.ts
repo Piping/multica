@@ -1,6 +1,15 @@
 import type { Workspace } from "../types";
 import { useAuthStore } from "../auth";
+import type { StartPage } from "../navigation/start-page-store";
 import { paths } from "./paths";
+
+export function resolveWorkspaceStartPath(
+  slug: string,
+  startPage: StartPage = "issues",
+): string {
+  const workspacePaths = paths.workspace(slug);
+  return startPage === "agent" ? workspacePaths.chat() : workspacePaths.issues();
+}
 
 /**
  * Priority (onboarded-first):
@@ -30,13 +39,14 @@ import { paths } from "./paths";
 export function resolvePostAuthDestination(
   workspaces: Workspace[],
   hasOnboarded: boolean,
+  startPage: StartPage = "issues",
 ): string {
   if (!hasOnboarded) {
     return paths.onboarding();
   }
   const first = workspaces[0];
   if (first) {
-    return paths.workspace(first.slug).issues();
+    return resolveWorkspaceStartPath(first.slug, startPage);
   }
   return paths.newWorkspace();
 }

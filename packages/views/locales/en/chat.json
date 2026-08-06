@@ -207,5 +207,17 @@
     "archive": "Archive chat",
     "unarchive": "Unarchive chat",
     "delete": "Delete chat"
+  },
+  "tools": {
+    "title": "Session tools",
+    "toggle": "Toggle session tools",
+    "files": "Files",
+    "html": "HTML",
+    "html_file": "HTML file",
+    "no_files": "No files in this session",
+    "no_files_hint": "Files attached to messages will appear here.",
+    "no_html": "No HTML preview available",
+    "no_html_hint": "Attach or generate an HTML file in this session to preview it.",
+    "download_file": "Download {{name}}"
   }
 }

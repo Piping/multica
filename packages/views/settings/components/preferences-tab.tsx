@@ -19,6 +19,10 @@ import {
 import { useLocaleAdapter } from "@multica/core/i18n/react";
 import { useAuthStore } from "@multica/core/auth";
 import {
+  useStartPageStore,
+  type StartPage,
+} from "@multica/core/navigation";
+import {
   useCommentComposerStore,
   useIssueLinkStore,
 } from "@multica/core/issues/stores";
@@ -37,6 +41,8 @@ export function PreferencesTab() {
   const { t, i18n } = useT("settings");
   const localeAdapter = useLocaleAdapter();
   const user = useAuthStore((s) => s.user);
+  const startPage = useStartPageStore((s) => s.startPage);
+  const setStartPage = useStartPageStore((s) => s.setStartPage);
 
   // i18next.language can be a region-tagged BCP-47 string (e.g. "en-US",
   // "zh-Hans-CN") returned by intl-localematcher. Normalize to a supported
@@ -58,6 +64,11 @@ export function PreferencesTab() {
     { value: "zh-Hans", label: t(($) => $.preferences.language.chinese) },
     { value: "ko", label: t(($) => $.preferences.language.korean) },
     { value: "ja", label: t(($) => $.preferences.language.japanese) },
+  ];
+
+  const startPageOptions: { value: StartPage; label: string }[] = [
+    { value: "issues", label: t(($) => $.preferences.start_page.issues) },
+    { value: "agent", label: t(($) => $.preferences.start_page.agent) },
   ];
 
   // Persist locally → sync to user.language → reload. Reload (vs in-place
@@ -155,6 +166,41 @@ export function PreferencesTab() {
               </SelectTrigger>
               <SelectContent align="end">
                 {languageOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+
+          <SettingsRow
+            label={t(($) => $.preferences.start_page.title)}
+            description={t(($) => $.preferences.start_page.hint)}
+            size="select"
+          >
+            <Select
+              items={startPageOptions}
+              value={startPage}
+              onValueChange={(next) => {
+                if (!next || next === startPage) return;
+                setStartPage(next as StartPage);
+                toast.success(t(($) => $.auto_save.toast_saved), {
+                  id: "settings-auto-save",
+                });
+              }}
+            >
+              <SelectTrigger
+                size="sm"
+                className="w-full"
+                aria-label={t(($) => $.preferences.start_page.title)}
+              >
+                <SelectValue>
+                  {startPageOptions.find((option) => option.value === startPage)?.label}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent align="end">
+                {startPageOptions.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>

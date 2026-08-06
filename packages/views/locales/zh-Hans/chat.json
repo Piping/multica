@@ -204,5 +204,17 @@
     "delete": "删除会话",
     "archive": "归档会话",
     "unarchive": "取消归档"
+  },
+  "tools": {
+    "title": "会话工具",
+    "toggle": "打开或关闭会话工具",
+    "files": "文件",
+    "html": "HTML",
+    "html_file": "HTML 文件",
+    "no_files": "此会话暂无文件",
+    "no_files_hint": "消息中附加的文件会显示在这里。",
+    "no_html": "暂无 HTML 预览",
+    "no_html_hint": "在此会话中附加或生成 HTML 文件后即可预览。",
+    "download_file": "下载 {{name}}"
   }
 }

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "@/platform/router-compat";
 import { useQueryClient } from "@tanstack/react-query";
 import { sanitizeNextUrl, useAuthStore } from "@multica/core/auth";
+import { useStartPageStore } from "@multica/core/navigation";
 import { workspaceKeys } from "@multica/core/workspace/queries";
 import { paths, resolvePostAuthDestination } from "@multica/core/paths";
 import { api } from "@multica/core/api";
@@ -135,7 +136,13 @@ function CallbackContent() {
           //    backfill for onboarded users with no recorded source is
           //    handled by `<SourceBackfillModal />` inside the dashboard
           //    shell — not a route detour, so we route straight to dest.
-          router.push(resolvePostAuthDestination(wsList, onboarded));
+          router.push(
+            resolvePostAuthDestination(
+              wsList,
+              onboarded,
+              useStartPageStore.getState().startPage,
+            ),
+          );
         })
         .catch((err) => {
           setError(err instanceof Error ? err.message : "Login failed");

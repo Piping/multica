@@ -68,6 +68,12 @@
       "japanese": "日本語",
       "sync_failed": "语言已在本设备保存，但同步到账号失败。其他设备可能仍显示旧语言。"
     },
+    "start_page": {
+      "title": "启动时打开",
+      "hint": "选择登录后或首次进入工作区时默认打开的页面。",
+      "issues": "Issue",
+      "agent": "Agent"
+    },
     "timezone": {
       "title": "查看时区",
       "browser_suffix": "（浏览器）",

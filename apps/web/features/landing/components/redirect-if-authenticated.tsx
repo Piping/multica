@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "@/platform/router-compat";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
+import { useStartPageStore } from "@multica/core/navigation";
 import { workspaceListOptions } from "@multica/core/workspace";
 import { resolvePostAuthDestination, useHasOnboarded } from "@multica/core/paths";
 import { isOfficialMarketingHost } from "@/lib/public-host";
@@ -26,6 +27,7 @@ export function RedirectIfAuthenticated() {
   const user = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
   const hasOnboarded = useHasOnboarded();
+  const startPage = useStartPageStore((state) => state.startPage);
 
   const { data: list = [], isFetched } = useQuery({
     ...workspaceListOptions(),
@@ -35,8 +37,8 @@ export function RedirectIfAuthenticated() {
   useEffect(() => {
     if (isLoading || !user || !isFetched) return;
     if (isOfficialMarketingHost(window.location.hostname)) return;
-    router.replace(resolvePostAuthDestination(list, hasOnboarded));
-  }, [isLoading, user, isFetched, list, hasOnboarded, router]);
+    router.replace(resolvePostAuthDestination(list, hasOnboarded, startPage));
+  }, [isLoading, user, isFetched, list, hasOnboarded, startPage, router]);
 
   return null;
 }

@@ -9,6 +9,7 @@ import {
   mergePersistedTabs,
   useTabStore,
   getActiveTab,
+  defaultPathFor,
   type WorkspaceTabGroup,
 } from "./tab-store";
 
@@ -51,6 +52,13 @@ describe("sanitizeTabPath", () => {
   it("normalizes a bare workspace url to its default surface (replaces the in-router index redirect)", () => {
     expect(sanitizeTabPath("/acme")).toBe("/acme/issues");
     expect(sanitizeTabPath("/acme?welcome=1")).toBe("/acme/issues?welcome=1");
+  });
+});
+
+describe("defaultPathFor", () => {
+  it("maps the Agent start preference to workspace chat", () => {
+    expect(defaultPathFor("acme", "agent")).toBe("/acme/chat");
+    expect(defaultPathFor("acme", "issues")).toBe("/acme/issues");
   });
 });
 

@@ -68,6 +68,12 @@
       "japanese": "日本語",
       "sync_failed": "Language saved on this device, but failed to sync to your account. Other devices may show the previous language."
     },
+    "start_page": {
+      "title": "Page on launch",
+      "hint": "Choose the first page opened after sign-in or when entering a workspace for the first time.",
+      "issues": "Issues",
+      "agent": "Agent"
+    },
     "timezone": {
       "title": "Viewing Timezone",
       "browser_suffix": " (browser)",

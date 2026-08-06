@@ -10,6 +10,7 @@ import { ErrorBoundary } from "@multica/ui/components/common/error-boundary";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
 import { useAuthStore } from "@multica/core/auth";
 import { api } from "@multica/core/api";
+import { useStartPageStore } from "@multica/core/navigation";
 import {
   paths,
   resolvePostAuthDestination,
@@ -52,7 +53,11 @@ async function resolveLoginDestination(
       // The standard resolver remains a usable fallback.
     }
   }
-  return resolvePostAuthDestination(workspaces, onboarded);
+  return resolvePostAuthDestination(
+    workspaces,
+    onboarded,
+    useStartPageStore.getState().startPage,
+  );
 }
 
 export function LoginRoute() {
@@ -143,7 +148,11 @@ export function OnboardingRoute() {
       return;
     }
     if (isFetched && onboarded && !completing.current) {
-      navigate(resolvePostAuthDestination(workspaces, true), {
+      navigate(resolvePostAuthDestination(
+        workspaces,
+        true,
+        useStartPageStore.getState().startPage,
+      ), {
         replace: true,
       });
     }

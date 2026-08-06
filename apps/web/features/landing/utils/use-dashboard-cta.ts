@@ -2,6 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
+import {
+  useStartPageStore,
+  type StartPage,
+} from "@multica/core/navigation";
 import { workspaceListOptions } from "@multica/core/workspace";
 import {
   paths,
@@ -24,15 +28,17 @@ export function resolveDashboardCtaHref({
   isWorkspaceListFetched,
   workspaces,
   hasOnboarded,
+  startPage = "issues",
 }: {
   isAuthenticated: boolean;
   isWorkspaceListFetched: boolean;
   workspaces: Workspace[] | undefined;
   hasOnboarded: boolean;
+  startPage?: StartPage;
 }): string {
   if (!isAuthenticated) return paths.login();
   if (!isWorkspaceListFetched || !workspaces) return LOADING_FALLBACK_HREF;
-  return resolvePostAuthDestination(workspaces, hasOnboarded);
+  return resolvePostAuthDestination(workspaces, hasOnboarded, startPage);
 }
 
 /**
@@ -53,6 +59,7 @@ export function resolveDashboardCtaHref({
 export function useDashboardCtaHref(): string {
   const user = useAuthStore((s) => s.user);
   const hasOnboarded = useHasOnboarded();
+  const startPage = useStartPageStore((state) => state.startPage);
 
   const { data, isFetched } = useQuery({
     ...workspaceListOptions(),
@@ -64,5 +71,6 @@ export function useDashboardCtaHref(): string {
     isWorkspaceListFetched: isFetched,
     workspaces: data,
     hasOnboarded,
+    startPage,
   });
 }

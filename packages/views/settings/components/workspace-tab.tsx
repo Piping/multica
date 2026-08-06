@@ -34,6 +34,7 @@ import {
   useCurrentWorkspace,
   useHasOnboarded,
 } from "@multica/core/paths";
+import { useStartPageStore } from "@multica/core/navigation";
 import { setCurrentWorkspace } from "@multica/core/platform";
 import type { Workspace } from "@multica/core/types";
 import { AvatarUploadControl } from "../../common/avatar-upload-control";
@@ -132,7 +133,13 @@ export function WorkspaceTab() {
     // takes over immediately, or the new-workspace overlay takes over
     // (which has no workspace context, so null is correct).
     setCurrentWorkspace(null, null);
-    navigation.push(resolvePostAuthDestination(remaining, hasOnboarded));
+    navigation.push(
+      resolvePostAuthDestination(
+        remaining,
+        hasOnboarded,
+        useStartPageStore.getState().startPage,
+      ),
+    );
   };
 
   const [name, setName] = useState(workspace?.name ?? "");

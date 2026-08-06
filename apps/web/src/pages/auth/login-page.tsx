@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "@/platform/router-compat";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { sanitizeNextUrl, useAuthStore } from "@multica/core/auth";
 import { useConfigStore } from "@multica/core/config";
+import { useStartPageStore } from "@multica/core/navigation";
 import {
   workspaceKeys,
   workspaceListOptions,
@@ -53,7 +54,11 @@ async function resolveLoggedInDestination(
       // fall through
     }
   }
-  return resolvePostAuthDestination(workspaces, hasOnboarded);
+  return resolvePostAuthDestination(
+    workspaces,
+    hasOnboarded,
+    useStartPageStore.getState().startPage,
+  );
 }
 
 function LoginPageContent() {

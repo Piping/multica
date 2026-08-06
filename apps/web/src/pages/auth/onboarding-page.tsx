@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "@/platform/router-compat";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
+import { useStartPageStore } from "@multica/core/navigation";
 import {
   paths,
   resolvePostAuthDestination,
@@ -30,6 +31,7 @@ export default function OnboardingPage() {
   const user = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
   const hasOnboarded = useHasOnboarded();
+  const startPage = useStartPageStore((state) => state.startPage);
   const { data: workspaces = [], isFetched: workspacesFetched } = useQuery({
     ...workspaceListOptions(),
     enabled: !!user,
@@ -58,9 +60,11 @@ export default function OnboardingPage() {
     // judgment in callback / login handles "where should this user go on
     // login" so OnboardingPage no longer needs to second-guess it.
     if (hasOnboarded) {
-      router.replace(resolvePostAuthDestination(workspaces, hasOnboarded));
+      router.replace(
+        resolvePostAuthDestination(workspaces, hasOnboarded, startPage),
+      );
     }
-  }, [isLoading, user, hasOnboarded, workspacesFetched, workspaces, router]);
+  }, [isLoading, user, hasOnboarded, startPage, workspacesFetched, workspaces, router]);
 
   if (isLoading || !user || hasOnboarded) return null;
 

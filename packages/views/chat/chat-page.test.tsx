@@ -62,6 +62,7 @@ vi.mock("./components/archived-agent-banner", () => ({
 }));
 vi.mock("react-resizable-panels", () => ({
   useDefaultLayout: () => ({ defaultLayout: undefined, onLayoutChanged: vi.fn() }),
+  usePanelRef: () => ({ current: null }),
 }));
 vi.mock("@multica/ui/components/ui/resizable", () => ({
   ResizablePanelGroup: ({ children }: { children: React.ReactNode }) => (
@@ -74,6 +75,25 @@ vi.mock("@multica/ui/components/ui/resizable", () => ({
 }));
 vi.mock("@multica/ui/hooks/use-mobile", () => ({
   useIsMobile: () => false,
+}));
+vi.mock("@multica/ui/components/ui/sheet", () => ({
+  Sheet: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SheetContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+vi.mock("../layout/animated-right-sidebar", () => ({
+  AnimatedRightSidebar: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  getAnimatedRightSidebarInitialOpen: () => false,
+  rightSidebarPanelMotionProps: {},
+  useAnimatedRightSidebarState: () => ({
+    open: false,
+    visualOpen: false,
+    motionEnabled: false,
+    beginToggle: vi.fn(),
+    handleResize: vi.fn(),
+  }),
+}));
+vi.mock("./components/chat-tool-panel", () => ({
+  ChatToolPanel: () => <div>chat-tool-panel</div>,
 }));
 vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({ chat: () => "/acme/chat" }),
@@ -91,7 +111,11 @@ const storeRef = vi.hoisted(() => ({
 const storeListeners = vi.hoisted(() => new Set<() => void>());
 const availableAgentsRef = vi.hoisted(() => ({ current: [] as Agent[] }));
 const agentsSettledRef = vi.hoisted(() => ({ current: true }));
+const sessionsRef = vi.hoisted(() => ({
+  current: [] as Array<{ id: string; agent_id: string; status: "active" | "archived" }>,
+}));
 const mockStartNewChat = vi.hoisted(() => vi.fn());
+const mockSelectSession = vi.hoisted(() => vi.fn());
 const mockToastError = vi.hoisted(() => vi.fn());
 const mockSetActiveSession = vi.hoisted(() =>
   vi.fn((id: string | null) => {
@@ -125,7 +149,8 @@ vi.mock("./components/use-chat-controller", async () => {
       agents: availableAgentsRef.current,
       availableAgents: availableAgentsRef.current,
       agentsSettled: agentsSettledRef.current,
-      sessions: [],
+      sessions: sessionsRef.current,
+      sessionsLoaded: true,
       activeSessionId: useSyncExternalStore(
         subscribeToStore,
         () => storeRef.current,
@@ -155,7 +180,7 @@ vi.mock("./components/use-chat-controller", async () => {
       handleUploadFile: vi.fn(),
       handleNewChat: vi.fn(),
       handleStartNewChat: mockStartNewChat,
-      handleSelectSession: vi.fn(),
+      handleSelectSession: mockSelectSession,
       advanceSelectionAfterArchive: vi.fn(),
       archiveSession: vi.fn(),
       setActiveSession: mockSetActiveSession,
@@ -230,6 +255,36 @@ beforeEach(() => {
   storeListeners.clear();
   availableAgentsRef.current = [agent];
   agentsSettledRef.current = true;
+  sessionsRef.current = [];
+});
+
+describe("ChatPage default session", () => {
+  it("selects the first existing active session on a bare Agent route", () => {
+    sessionsRef.current = [
+      { id: "session-1", agent_id: "agent-1", status: "active" },
+      { id: "session-2", agent_id: "agent-1", status: "active" },
+    ];
+    renderPage("");
+    expect(mockSelectSession).toHaveBeenCalledTimes(1);
+    expect(mockSelectSession).toHaveBeenCalledWith(sessionsRef.current[0]);
+  });
+
+  it("does not override an explicit session deep link", () => {
+    sessionsRef.current = [
+      { id: "session-1", agent_id: "agent-1", status: "active" },
+    ];
+    renderPage("session=session-9");
+    expect(mockSetActiveSession).toHaveBeenCalledWith("session-9");
+    expect(mockSelectSession).not.toHaveBeenCalled();
+  });
+
+  it("does not select an archived session as the default", () => {
+    sessionsRef.current = [
+      { id: "session-archived", agent_id: "agent-1", status: "archived" },
+    ];
+    renderPage("");
+    expect(mockSelectSession).not.toHaveBeenCalled();
+  });
 });
 
 describe("ChatPage ?agent= deep link", () => {

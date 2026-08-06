@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useDefaultLayout } from "react-resizable-panels";
+import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { ArrowLeft, Bot, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@multica/ui/components/ui/button";
@@ -11,6 +11,10 @@ import {
   ResizableHandle,
 } from "@multica/ui/components/ui/resizable";
 import { useIsMobile } from "@multica/ui/hooks/use-mobile";
+import {
+  Sheet,
+  SheetContent,
+} from "@multica/ui/components/ui/sheet";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useChatStore } from "@multica/core/chat";
 import { chatQuickActionsPendingOptions } from "@multica/core/chat/queries";
@@ -26,6 +30,7 @@ import { ChatMessageList, ChatMessageSkeleton } from "./components/chat-message-
 import { ChatInput } from "./components/chat-input";
 import { ChatThreadList } from "./components/chat-thread-list";
 import { ChatSessionHeader } from "./components/chat-session-header";
+import { ChatToolPanel } from "./components/chat-tool-panel";
 import { EmptyState } from "./components/chat-empty-state";
 import { AgentPicker, NewChatButton } from "./components/new-chat-button";
 import { useChatController } from "./components/use-chat-controller";
@@ -33,6 +38,12 @@ import { OfflineBanner } from "./components/offline-banner";
 import { NoAgentBanner } from "./components/no-agent-banner";
 import { ArchivedAgentBanner } from "./components/archived-agent-banner";
 import { RuntimeRequiredBanner } from "./components/runtime-required-banner";
+import {
+  AnimatedRightSidebar,
+  getAnimatedRightSidebarInitialOpen,
+  rightSidebarPanelMotionProps,
+  useAnimatedRightSidebarState,
+} from "../layout/animated-right-sidebar";
 
 /**
  * Chat tab — the first-class two-pane surface (thread list on the left,
@@ -60,6 +71,12 @@ export function ChatPage() {
   const isMobile = useIsMobile();
 
   const c = useChatController({ isActive: true });
+  const {
+    activeSessionId,
+    handleSelectSession,
+    sessions,
+    sessionsLoaded,
+  } = c;
   const { data: quickActionsPending = null } = useQuery(
     chatQuickActionsPendingOptions(c.activeSessionId ?? ""),
   );
@@ -77,6 +94,7 @@ export function ChatPage() {
   // conversation pane is always mounted so it only needs to reset itself once a
   // real session takes over.
   const [composingNew, setComposingNew] = useState(false);
+  const defaultSessionSuppressed = useRef(Boolean(urlSession || urlAgent));
   useEffect(() => {
     // Read the LIVE store value for the same reason as the session sync
     // effects below: under StrictMode's double-invoke this effect replays
@@ -118,6 +136,40 @@ export function ChatPage() {
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "multica_chat_layout",
   });
+  const toolsPanelRef = usePanelRef();
+  const toolsInitialOpen = getAnimatedRightSidebarInitialOpen(
+    false,
+    defaultLayout,
+    "tools",
+  );
+  const {
+    open: desktopToolsOpen,
+    visualOpen: desktopToolsVisualOpen,
+    motionEnabled: desktopToolsMotionEnabled,
+    beginToggle: beginDesktopToolsToggle,
+    handleResize: handleDesktopToolsResize,
+  } = useAnimatedRightSidebarState(toolsInitialOpen);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+
+  useEffect(() => {
+    if (isMobile) setMobileToolsOpen(false);
+  }, [isMobile]);
+
+  const toolsOpen = isMobile ? mobileToolsOpen : desktopToolsOpen;
+  const toggleTools = () => {
+    if (isMobile) {
+      setMobileToolsOpen((open) => !open);
+      return;
+    }
+    const panel = toolsPanelRef.current;
+    if (!panel) return;
+    const nextOpen = panel.isCollapsed();
+    beginDesktopToolsToggle(nextOpen);
+    window.requestAnimationFrame(() => {
+      if (nextOpen) panel.expand();
+      else panel.collapse();
+    });
+  };
 
   // `?agent=` intent bookkeeping. The ref holds the param value already
   // consumed (or superseded) so the effect below fires at most once per deep
@@ -132,6 +184,7 @@ export function ChatPage() {
   };
 
   const handleSelect = (session: ChatSession) => {
+    defaultSessionSuppressed.current = true;
     supersedeAgentIntent();
     c.handleSelectSession(session);
     setComposingNew(false);
@@ -143,6 +196,7 @@ export function ChatPage() {
   // the list, which reads more naturally than being thrown into an unrelated
   // conversation full-screen. Archiving any other chat leaves the view put.
   const handleArchive = (session: ChatSession) => {
+    defaultSessionSuppressed.current = true;
     supersedeAgentIntent();
     if (session.id === c.activeSessionId) {
       if (isMobile) {
@@ -156,11 +210,44 @@ export function ChatPage() {
   };
 
   const startNewChat = (agent: Agent | null) => {
+    defaultSessionSuppressed.current = true;
     supersedeAgentIntent();
     if (agent) c.handleStartNewChat(agent);
     else c.handleNewChat();
     setComposingNew(true);
   };
+
+  // A bare Agent route should open useful content immediately. Choose the
+  // first active session only for the initial, intent-free entry: explicit
+  // deep links and every user selection/new-chat action suppress this fallback
+  // so it can never pull the user away from what they just chose.
+  useEffect(() => {
+    if (!sessionsLoaded || defaultSessionSuppressed.current) return;
+    if (urlSession || urlAgent || composingNew) return;
+    const liveSessionId = useChatStore.getState().activeSessionId;
+    if (liveSessionId) {
+      if (sessions.some((session) => session.id === liveSessionId)) {
+        defaultSessionSuppressed.current = true;
+      }
+      return;
+    }
+    const firstSession = sessions.find((session) => session.status === "active");
+    if (!firstSession) {
+      defaultSessionSuppressed.current = true;
+      return;
+    }
+    defaultSessionSuppressed.current = true;
+    handleSelectSession(firstSession);
+    setComposingNew(false);
+  }, [
+    activeSessionId,
+    composingNew,
+    handleSelectSession,
+    sessions,
+    sessionsLoaded,
+    urlAgent,
+    urlSession,
+  ]);
 
   const changeProjectContext = (projectId: string | null) => {
     if (projectId === c.activeProjectId) return;
@@ -246,6 +333,8 @@ export function ChatPage() {
           agent={c.activeAgent}
           runtime={c.activeRuntime}
           onArchive={handleArchive}
+          toolsOpen={toolsOpen}
+          onToggleTools={toggleTools}
         />
       )}
       {c.showSkeleton ? (
@@ -329,6 +418,7 @@ export function ChatPage() {
               variant="ghost"
               size="sm"
               onClick={() => {
+                defaultSessionSuppressed.current = true;
                 c.setActiveSession(null);
                 setComposingNew(false);
               }}
@@ -339,6 +429,15 @@ export function ChatPage() {
             </Button>
           </div>
           {conversation}
+          <Sheet open={mobileToolsOpen} onOpenChange={setMobileToolsOpen}>
+            <SheetContent
+              side="right"
+              showCloseButton={false}
+              className="w-[min(92vw,420px)] p-0"
+            >
+              <ChatToolPanel messages={c.messages} />
+            </SheetContent>
+          </Sheet>
         </div>
       );
     }
@@ -409,6 +508,28 @@ export function ChatPage() {
             </div>
           )}
         </div>
+      </ResizablePanel>
+      <ResizableHandle />
+      <ResizablePanel
+        id="tools"
+        {...rightSidebarPanelMotionProps}
+        data-right-sidebar-motion={desktopToolsMotionEnabled ? "enabled" : undefined}
+        defaultSize={desktopToolsOpen ? 360 : 0}
+        minSize={280}
+        maxSize={520}
+        collapsible
+        groupResizeBehavior="preserve-pixel-size"
+        panelRef={toolsPanelRef}
+        onResize={handleDesktopToolsResize}
+      >
+        <AnimatedRightSidebar
+          open={desktopToolsVisualOpen}
+          motionEnabled={desktopToolsMotionEnabled}
+          contentClassName="h-full p-0"
+          className="overflow-hidden"
+        >
+          <ChatToolPanel messages={c.messages} />
+        </AnimatedRightSidebar>
       </ResizablePanel>
     </ResizablePanelGroup>
   );

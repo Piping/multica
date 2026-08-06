@@ -56,6 +56,7 @@ import {
 } from "../chat/queries";
 import { useChatStore } from "../chat";
 import { resolvePostAuthDestination, useHasOnboarded } from "../paths";
+import { useStartPageStore } from "../navigation";
 import type {
   MemberAddedPayload,
   WorkspaceDeletedPayload,
@@ -1090,6 +1091,7 @@ export function useRealtimeSync(
       const target = resolvePostAuthDestination(
         remaining,
         hasOnboardedRef.current,
+        useStartPageStore.getState().startPage,
       );
       if (typeof window !== "undefined") {
         window.location.assign(target);

@@ -204,5 +204,17 @@
     "delete": "채팅 삭제",
     "archive": "채팅 보관",
     "unarchive": "채팅 보관 해제"
+  },
+  "tools": {
+    "title": "세션 도구",
+    "toggle": "세션 도구 열기 또는 닫기",
+    "files": "파일",
+    "html": "HTML",
+    "html_file": "HTML 파일",
+    "no_files": "이 세션에 파일이 없습니다",
+    "no_files_hint": "메시지에 첨부된 파일이 여기에 표시됩니다.",
+    "no_html": "HTML 미리보기가 없습니다",
+    "no_html_hint": "이 세션에서 HTML 파일을 첨부하거나 생성하면 미리볼 수 있습니다.",
+    "download_file": "{{name}} 다운로드"
   }
 }

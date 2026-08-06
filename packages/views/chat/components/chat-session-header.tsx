@@ -1,8 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Trash2, UserRound } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  MoreHorizontal,
+  PanelRight,
+  Pencil,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { Button } from "@multica/ui/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@multica/ui/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -45,6 +58,8 @@ export function ChatSessionHeader({
   agent,
   runtime,
   onArchive,
+  toolsOpen = false,
+  onToggleTools,
 }: {
   session: ChatSession;
   agent: Agent | null;
@@ -53,6 +68,8 @@ export function ChatSessionHeader({
   // next chat on desktop, back to the list on mobile), so the parent owns it —
   // see ChatPage.handleArchive. Falls back to a plain status flip if unwired.
   onArchive?: (session: ChatSession) => void;
+  toolsOpen?: boolean;
+  onToggleTools?: () => void;
 }) {
   const { t } = useT("chat");
   const wsPaths = useWorkspacePaths();
@@ -159,6 +176,29 @@ export function ChatSessionHeader({
           </div>
         ) : null}
       </div>
+
+      {onToggleTools ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant={toolsOpen ? "secondary" : "ghost"}
+                size="icon-sm"
+                className="text-muted-foreground"
+                aria-pressed={toolsOpen}
+                aria-label={t(($) => $.tools.toggle)}
+                onClick={onToggleTools}
+              />
+            }
+          >
+            <PanelRight className="size-4" />
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {t(($) => $.tools.toggle)}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
 
       <DropdownMenu>
         <DropdownMenuTrigger

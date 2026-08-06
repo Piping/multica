@@ -1,5 +1,8 @@
 import { lazy, Suspense, type ComponentType } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { useStartPageStore } from "@multica/core/navigation";
+import { resolveWorkspaceStartPath } from "@multica/core/paths";
+import { useRequiredWorkspaceSlug } from "@multica/core/paths";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
 
 function lazyNamed<T extends Record<string, ComponentType>>(
@@ -102,6 +105,12 @@ const AttachmentPreviewRoutePage = lazyNamed(
   "AttachmentPreviewRoutePage",
 );
 
+function WorkspaceIndexRedirect() {
+  const slug = useRequiredWorkspaceSlug();
+  const startPage = useStartPageStore((state) => state.startPage);
+  return <Navigate to={resolveWorkspaceStartPath(slug, startPage)} replace />;
+}
+
 export function AppRouter() {
   return (
     <Suspense
@@ -138,7 +147,7 @@ export function AppRouter() {
           element={<AttachmentPreviewRoutePage />}
         />
         <Route element={<DashboardShell />}>
-          <Route index element={<Navigate to="issues" replace />} />
+          <Route index element={<WorkspaceIndexRedirect />} />
           <Route path="issues" element={<IssuesPage />} />
           <Route path="issues/:id" element={<IssueDetailRoutePage />} />
           <Route path="projects" element={<ProjectsPage />} />
