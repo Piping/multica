@@ -33,6 +33,10 @@
       // was ever cached, a stale-build bug the moment it is.
       "outputs": ["dist/**", "out/**"]
     },
+    "@multica/desktop-wails#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["frontend/dist/**", "bin/**"]
+    },
     "dev": {
       "cache": false,
       "persistent": true

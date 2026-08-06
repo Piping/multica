@@ -83,6 +83,7 @@ type DaemonService struct {
 	app *application.App
 
 	mu           sync.Mutex
+	runPollLoop  func(<-chan struct{})
 	targetAPIURL string
 	currentState string
 	active       *activeProfile
@@ -92,13 +93,47 @@ type DaemonService struct {
 }
 
 func newDaemonService() *DaemonService {
-	return &DaemonService{currentState: "installing_cli"}
+	service := &DaemonService{currentState: "installing_cli"}
+	service.runPollLoop = service.pollLoop
+	return service
 }
 
 func (s *DaemonService) attach(app *application.App) {
 	s.app = app
-	s.stopPolling = make(chan struct{})
-	go s.pollLoop()
+}
+
+func (s *DaemonService) ServiceStartup(
+	_ context.Context,
+	_ application.ServiceOptions,
+) error {
+	s.mu.Lock()
+	if s.stopPolling != nil {
+		s.mu.Unlock()
+		return nil
+	}
+	stopPolling := make(chan struct{})
+	s.stopPolling = stopPolling
+	runPollLoop := s.runPollLoop
+	s.mu.Unlock()
+	go runPollLoop(stopPolling)
+	return nil
+}
+
+func (s *DaemonService) ServiceShutdown() error {
+	s.mu.Lock()
+	stopPolling := s.stopPolling
+	stopLogTail := s.stopLogTail
+	s.stopPolling = nil
+	s.stopLogTail = nil
+	s.mu.Unlock()
+
+	if stopPolling != nil {
+		close(stopPolling)
+	}
+	if stopLogTail != nil {
+		close(stopLogTail)
+	}
+	return nil
 }
 
 func (s *DaemonService) SetTargetAPIURL(rawURL string) error {
@@ -472,7 +507,7 @@ func (s *DaemonService) emitStatus(status daemonStatus) {
 	}
 }
 
-func (s *DaemonService) pollLoop() {
+func (s *DaemonService) pollLoop(stop <-chan struct{}) {
 	ticker := time.NewTicker(daemonPollInterval)
 	defer ticker.Stop()
 	s.emitStatus(s.fetchStatus())
@@ -480,7 +515,7 @@ func (s *DaemonService) pollLoop() {
 		select {
 		case <-ticker.C:
 			s.emitStatus(s.fetchStatus())
-		case <-s.stopPolling:
+		case <-stop:
 			return
 		}
 	}

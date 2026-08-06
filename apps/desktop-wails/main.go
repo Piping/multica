@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path"
@@ -83,9 +84,17 @@ func main() {
 	})
 
 	if err := app.Run(); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Multica Wails failed to start: %v\n", err)
+		logWailsRunError(application.DefaultLogger(slog.LevelError), err)
 		os.Exit(1)
 	}
+}
+
+func logWailsRunError(logger *slog.Logger, err error) {
+	logger.Error(
+		"wails run failed",
+		"error_type", fmt.Sprintf("%T", err),
+		"error_text", err.Error(),
+	)
 }
 
 func newSPAAssetHandler(distAssets fs.FS) http.Handler {

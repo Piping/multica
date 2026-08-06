@@ -1,13 +1,37 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
 )
+
+func TestLogWailsRunErrorIncludesConcreteTypeAndText(t *testing.T) {
+	t.Parallel()
+
+	var output bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&output, nil))
+	err := errors.New("service startup failed")
+
+	logWailsRunError(logger, err)
+
+	logged := output.String()
+	if !strings.Contains(logged, "msg=\"wails run failed\"") {
+		t.Fatalf("missing failure message: %q", logged)
+	}
+	if !strings.Contains(logged, "error_type=*errors.errorString") {
+		t.Fatalf("missing concrete error type: %q", logged)
+	}
+	if !strings.Contains(logged, "error_text=\"service startup failed\"") {
+		t.Fatalf("missing error text: %q", logged)
+	}
+}
 
 func TestSPAAssetHandlerServesIndexForInternalDocumentNavigation(t *testing.T) {
 	t.Parallel()
