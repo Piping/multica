@@ -11,7 +11,7 @@
     "build:go": "node scripts/build-go.mjs",
     "build": "pnpm run build:frontend && pnpm run build:go",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "go test ./...",
+    "test": "go test ./... && vitest run frontend/src",
     "lint": "eslint frontend vite.config.ts"
   },
   "dependencies": {
@@ -47,6 +47,7 @@
     "eslint": "^9.39.2",
     "tailwindcss": "^4",
     "typescript": "catalog:",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "catalog:"
   }
 }

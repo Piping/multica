@@ -41,6 +41,7 @@ Go backend + monorepo frontend (pnpm workspaces + Turborepo) with shared package
 - `apps/web/platform/` - Web browser and routing adapter boundary
 - `apps/desktop-wails/` - must not import from `apps/desktop/`; Wails and Electron are independent host/rendering containers
 - `apps/desktop-wails/` keeps the main sidebar expanded because its top-left area also owns native macOS window controls; do not expose sidebar collapse controls or shortcuts in this host
+- `apps/desktop-wails/` may use SQLite only as a disposable read-model replica; Aiven/PostgreSQL plus HTTP/WS remain authoritative. Persist only explicitly validated React Query keys scoped by user and workspace, never add an offline mutation queue implicitly.
 
 ### Database Migrations (hard rules)
 

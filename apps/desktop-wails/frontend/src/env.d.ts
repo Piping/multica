@@ -144,6 +144,31 @@ interface DaemonAPI {
   openLogFile: () => Promise<{ success: boolean; error?: string }>;
 }
 
+interface ReplicaAPI {
+  load: (userId: string, workspaceId: string) => Promise<
+    Array<{
+      queryHash: string;
+      queryKeyJson: string;
+      dataJson: string;
+      updatedAt: number;
+    }>
+  >;
+  put: (
+    userId: string,
+    workspaceId: string,
+    queryHash: string,
+    queryKeyJson: string,
+    dataJson: string,
+    updatedAt: number,
+  ) => Promise<void>;
+  delete: (
+    userId: string,
+    workspaceId: string,
+    queryHash: string,
+  ) => Promise<void>;
+  clearUser: (userId: string) => Promise<void>;
+}
+
 interface UpdaterAPI {
   onUpdateAvailable: (
     callback: (info: { version: string; releaseNotes?: string }) => void,
@@ -167,6 +192,7 @@ declare global {
   interface Window {
     desktopAPI: DesktopAPI;
     daemonAPI: DaemonAPI;
+    replicaAPI: ReplicaAPI;
     updater: UpdaterAPI;
   }
 }

@@ -47,10 +47,16 @@ function DaemonSessionBridge() {
 }
 
 async function handleLogout(): Promise<void> {
+  const userId = useAuthStore.getState().user?.id;
   window.desktopAPI.reportAuthSession(null);
   useWelcomeStore.getState().reset();
   try {
-    await window.daemonAPI.clearToken();
+    await Promise.all([
+      window.daemonAPI.clearToken(),
+      userId
+        ? window.replicaAPI.clearUser(userId)
+        : Promise.resolve(),
+    ]);
   } finally {
     await window.daemonAPI.stop().catch(() => undefined);
   }

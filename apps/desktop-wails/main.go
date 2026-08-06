@@ -36,9 +36,11 @@ func main() {
 	}
 	appService := newAppService(dockService, notificationService)
 	daemonService := newDaemonService()
+	replicaService := newReplicaService()
 	services := []application.Service{
 		application.NewService(appService),
 		application.NewService(daemonService),
+		application.NewService(replicaService),
 		application.NewService(dockService),
 	}
 	if notificationService != nil {

@@ -9,6 +9,7 @@ import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
 import { NoAccessPage } from "@multica/views/workspace/no-access-page";
 import { WelcomeAfterOnboarding } from "@multica/views/workspace/welcome-after-onboarding";
 import { useWorkspaceSeen } from "@multica/views/workspace/use-workspace-seen";
+import { ReplicaBoundary } from "./replica";
 
 export function WorkspaceShell() {
   const { workspaceSlug = "" } = useParams();
@@ -47,8 +48,10 @@ export function WorkspaceShell() {
 
   return (
     <WorkspaceSlugProvider slug={workspaceSlug}>
-      <Outlet />
-      <WelcomeAfterOnboarding />
+      <ReplicaBoundary workspaceId={workspace.id}>
+        <Outlet />
+        <WelcomeAfterOnboarding />
+      </ReplicaBoundary>
     </WorkspaceSlugProvider>
   );
 }

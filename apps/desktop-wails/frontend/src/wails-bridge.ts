@@ -9,6 +9,7 @@ type BootstrapResult = {
 
 export const APP_SERVICE = "main.AppService";
 const DAEMON_SERVICE = "main.DaemonService";
+const REPLICA_SERVICE = "main.ReplicaService";
 
 export async function installWailsBridge(): Promise<void> {
   const windowName =
@@ -100,6 +101,37 @@ export async function installWailsBridge(): Promise<void> {
     openLogFile: () => call(`${DAEMON_SERVICE}.OpenLogFile`),
   };
 
+  const replicaAPI: Window["replicaAPI"] = {
+    load: (userId, workspaceId) =>
+      call(`${REPLICA_SERVICE}.Load`, userId, workspaceId),
+    put: (
+      userId,
+      workspaceId,
+      queryHash,
+      queryKeyJson,
+      dataJson,
+      updatedAt,
+    ) =>
+      call<void>(
+        `${REPLICA_SERVICE}.Put`,
+        userId,
+        workspaceId,
+        queryHash,
+        queryKeyJson,
+        dataJson,
+        updatedAt,
+      ),
+    delete: (userId, workspaceId, queryHash) =>
+      call<void>(
+        `${REPLICA_SERVICE}.Delete`,
+        userId,
+        workspaceId,
+        queryHash,
+      ),
+    clearUser: (userId) =>
+      call<void>(`${REPLICA_SERVICE}.ClearUser`, userId),
+  };
+
   const updater: Window["updater"] = {
     onUpdateAvailable: () => () => undefined,
     onDownloadProgress: () => () => undefined,
@@ -125,6 +157,12 @@ export async function installWailsBridge(): Promise<void> {
       configurable: false,
       enumerable: true,
       value: daemonAPI,
+      writable: false,
+    },
+    replicaAPI: {
+      configurable: false,
+      enumerable: true,
+      value: replicaAPI,
       writable: false,
     },
     updater: {
