@@ -167,6 +167,19 @@ interface ReplicaAPI {
     queryHash: string,
   ) => Promise<void>;
   clearUser: (userId: string) => Promise<void>;
+  loadBootstrap: (tokenHash: string) => Promise<{
+    tokenHash: string;
+    userJson: string;
+    workspacesJson: string;
+    updatedAt: number;
+  } | null>;
+  putBootstrap: (
+    tokenHash: string,
+    userJson: string,
+    workspacesJson: string,
+    updatedAt: number,
+  ) => Promise<void>;
+  deleteBootstrap: (tokenHash: string) => Promise<void>;
 }
 
 interface UpdaterAPI {

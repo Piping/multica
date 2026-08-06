@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -16,17 +17,25 @@ import (
 )
 
 const (
-	replicaSchemaVersion = 1
+	replicaSchemaVersion = 2
 	maxReplicaJSONBytes  = 32 << 20
 )
 
 var errReplicaUnavailable = errors.New("local state replica is unavailable")
+var tokenHashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 type ReplicaEntry struct {
 	QueryHash    string `json:"queryHash"`
 	QueryKeyJSON string `json:"queryKeyJson"`
 	DataJSON     string `json:"dataJson"`
 	UpdatedAt    int64  `json:"updatedAt"`
+}
+
+type ReplicaBootstrap struct {
+	TokenHash      string `json:"tokenHash"`
+	UserJSON       string `json:"userJson"`
+	WorkspacesJSON string `json:"workspacesJson"`
+	UpdatedAt      int64  `json:"updatedAt"`
 }
 
 type ReplicaService struct {
@@ -214,6 +223,111 @@ func (s *ReplicaService) ClearUser(userID string) error {
 	return nil
 }
 
+func (s *ReplicaService) LoadBootstrap(
+	tokenHash string,
+) (*ReplicaBootstrap, error) {
+	if err := validateTokenHash(tokenHash); err != nil {
+		return nil, err
+	}
+	db, err := s.database()
+	if err != nil {
+		return nil, err
+	}
+
+	var bootstrap ReplicaBootstrap
+	err = db.QueryRow(`
+		SELECT token_hash, user_json, workspaces_json, updated_at
+		FROM startup_bootstrap
+		WHERE token_hash = ?
+	`, tokenHash).Scan(
+		&bootstrap.TokenHash,
+		&bootstrap.UserJSON,
+		&bootstrap.WorkspacesJSON,
+		&bootstrap.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load startup bootstrap: %w", err)
+	}
+	if !json.Valid([]byte(bootstrap.UserJSON)) ||
+		!json.Valid([]byte(bootstrap.WorkspacesJSON)) ||
+		bootstrap.UpdatedAt < 0 {
+		if deleteErr := s.DeleteBootstrap(tokenHash); deleteErr != nil {
+			_, _ = fmt.Fprintf(
+				os.Stderr,
+				"Multica failed to remove corrupt startup bootstrap: %v\n",
+				deleteErr,
+			)
+		}
+		return nil, nil
+	}
+	return &bootstrap, nil
+}
+
+func (s *ReplicaService) PutBootstrap(
+	tokenHash,
+	userJSON,
+	workspacesJSON string,
+	updatedAt int64,
+) error {
+	if err := validateTokenHash(tokenHash); err != nil {
+		return err
+	}
+	if len(userJSON) > maxReplicaJSONBytes ||
+		len(workspacesJSON) > maxReplicaJSONBytes {
+		return errors.New("startup bootstrap exceeds the size limit")
+	}
+	if !json.Valid([]byte(userJSON)) {
+		return errors.New("bootstrap user must be valid JSON")
+	}
+	if !json.Valid([]byte(workspacesJSON)) {
+		return errors.New("bootstrap workspaces must be valid JSON")
+	}
+	if updatedAt < 0 {
+		return errors.New("updated timestamp cannot be negative")
+	}
+	db, err := s.database()
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`
+		INSERT INTO startup_bootstrap (
+			token_hash,
+			user_json,
+			workspaces_json,
+			updated_at
+		) VALUES (?, ?, ?, ?)
+		ON CONFLICT(token_hash) DO UPDATE SET
+			user_json = excluded.user_json,
+			workspaces_json = excluded.workspaces_json,
+			updated_at = excluded.updated_at
+		WHERE excluded.updated_at >= startup_bootstrap.updated_at
+	`, tokenHash, userJSON, workspacesJSON, updatedAt)
+	if err != nil {
+		return fmt.Errorf("write startup bootstrap: %w", err)
+	}
+	return nil
+}
+
+func (s *ReplicaService) DeleteBootstrap(tokenHash string) error {
+	if err := validateTokenHash(tokenHash); err != nil {
+		return err
+	}
+	db, err := s.database()
+	if err != nil {
+		return err
+	}
+	if _, err := db.Exec(
+		`DELETE FROM startup_bootstrap WHERE token_hash = ?`,
+		tokenHash,
+	); err != nil {
+		return fmt.Errorf("delete startup bootstrap: %w", err)
+	}
+	return nil
+}
+
 func (s *ReplicaService) open() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -318,6 +432,18 @@ func configureReplicaDatabase(db *sql.DB) error {
 			return fmt.Errorf("create local replica entries: %w", err)
 		}
 	}
+	if version < 2 {
+		if _, err := tx.Exec(`
+			CREATE TABLE startup_bootstrap (
+				token_hash TEXT NOT NULL PRIMARY KEY,
+				user_json TEXT NOT NULL,
+				workspaces_json TEXT NOT NULL,
+				updated_at INTEGER NOT NULL
+			) WITHOUT ROWID
+		`); err != nil {
+			return fmt.Errorf("create startup bootstrap: %w", err)
+		}
+	}
 	if _, err := tx.Exec(
 		fmt.Sprintf(`PRAGMA user_version = %d`, replicaSchemaVersion),
 	); err != nil {
@@ -325,6 +451,13 @@ func configureReplicaDatabase(db *sql.DB) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit local replica migration: %w", err)
+	}
+	return nil
+}
+
+func validateTokenHash(tokenHash string) error {
+	if !tokenHashPattern.MatchString(tokenHash) {
+		return errors.New("token hash must be a lowercase SHA-256 digest")
 	}
 	return nil
 }

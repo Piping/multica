@@ -42,6 +42,7 @@ Go backend + monorepo frontend (pnpm workspaces + Turborepo) with shared package
 - `apps/desktop-wails/` - must not import from `apps/desktop/`; Wails and Electron are independent host/rendering containers
 - `apps/desktop-wails/` keeps the main sidebar expanded because its top-left area also owns native macOS window controls; do not expose sidebar collapse controls or shortcuts in this host
 - `apps/desktop-wails/` may use SQLite only as a disposable read-model replica; Aiven/PostgreSQL plus HTTP/WS remain authoritative. Persist only explicitly validated React Query keys scoped by user and workspace, never add an offline mutation queue implicitly.
+- Wails startup may restore a validated user/workspace bootstrap keyed by a SHA-256 token digest; never persist the raw token in SQLite. Calibrate against the remote API in the background and invalidate restored auth only on an explicit `401`, not on network failures, timeouts, or `5xx` responses.
 
 ### Database Migrations (hard rules)
 

@@ -130,6 +130,23 @@ export async function installWailsBridge(): Promise<void> {
       ),
     clearUser: (userId) =>
       call<void>(`${REPLICA_SERVICE}.ClearUser`, userId),
+    loadBootstrap: (tokenHash) =>
+      call(`${REPLICA_SERVICE}.LoadBootstrap`, tokenHash),
+    putBootstrap: (
+      tokenHash,
+      userJson,
+      workspacesJson,
+      updatedAt,
+    ) =>
+      call<void>(
+        `${REPLICA_SERVICE}.PutBootstrap`,
+        tokenHash,
+        userJson,
+        workspacesJson,
+        updatedAt,
+      ),
+    deleteBootstrap: (tokenHash) =>
+      call<void>(`${REPLICA_SERVICE}.DeleteBootstrap`, tokenHash),
   };
 
   const updater: Window["updater"] = {

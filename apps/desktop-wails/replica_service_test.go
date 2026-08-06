@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -58,6 +59,53 @@ func TestReplicaServiceMigratesAndPersists(t *testing.T) {
 	}
 	if version != replicaSchemaVersion {
 		t.Fatalf("schema version = %d, want %d", version, replicaSchemaVersion)
+	}
+}
+
+func TestReplicaServiceMigratesVersionOneToBootstrapSchema(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "replica.sqlite3")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE replica_entries (
+			user_id TEXT NOT NULL,
+			workspace_id TEXT NOT NULL,
+			query_hash TEXT NOT NULL,
+			query_key_json TEXT NOT NULL,
+			data_json TEXT NOT NULL,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (user_id, workspace_id, query_hash)
+		) WITHOUT ROWID
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`PRAGMA user_version = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	service := openTestReplica(t, path)
+	tokenHash := strings.Repeat("a", 64)
+	if err := service.PutBootstrap(
+		tokenHash,
+		`{"id":"user-1"}`,
+		`[{"id":"workspace-1"}]`,
+		42,
+	); err != nil {
+		t.Fatal(err)
+	}
+	bootstrap, err := service.LoadBootstrap(tokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bootstrap == nil || bootstrap.UpdatedAt != 42 {
+		t.Fatalf("unexpected bootstrap after v1 migration: %#v", bootstrap)
 	}
 }
 
@@ -212,6 +260,134 @@ func TestReplicaServiceDropsCorruptRowsWhileLoading(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatal("corrupt row was not removed")
+	}
+}
+
+func TestReplicaServiceBootstrapIsolationUpsertAndDelete(t *testing.T) {
+	t.Parallel()
+
+	service := openTestReplica(t, filepath.Join(t.TempDir(), "replica.sqlite3"))
+	firstHash := strings.Repeat("1", 64)
+	secondHash := strings.Repeat("2", 64)
+
+	if err := service.PutBootstrap(
+		firstHash,
+		`{"id":"new-user"}`,
+		`[{"id":"new-workspace"}]`,
+		20,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.PutBootstrap(
+		firstHash,
+		`{"id":"old-user"}`,
+		`[{"id":"old-workspace"}]`,
+		10,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.PutBootstrap(
+		secondHash,
+		`{"id":"other-user"}`,
+		`[]`,
+		30,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := service.LoadBootstrap(firstHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == nil || first.UserJSON != `{"id":"new-user"}` {
+		t.Fatalf("older bootstrap replaced newer state: %#v", first)
+	}
+	second, err := service.LoadBootstrap(secondHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second == nil || second.UserJSON != `{"id":"other-user"}` {
+		t.Fatalf("token bootstrap scopes leaked: %#v", second)
+	}
+
+	if err := service.DeleteBootstrap(firstHash); err != nil {
+		t.Fatal(err)
+	}
+	first, err = service.LoadBootstrap(firstHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != nil {
+		t.Fatalf("deleted bootstrap still loaded: %#v", first)
+	}
+	second, err = service.LoadBootstrap(secondHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second == nil {
+		t.Fatal("deleting first token removed second token bootstrap")
+	}
+}
+
+func TestReplicaServiceDropsCorruptBootstrapWhileLoading(t *testing.T) {
+	t.Parallel()
+
+	service := openTestReplica(t, filepath.Join(t.TempDir(), "replica.sqlite3"))
+	tokenHash := strings.Repeat("c", 64)
+	if _, err := service.db.Exec(`
+		INSERT INTO startup_bootstrap (
+			token_hash,
+			user_json,
+			workspaces_json,
+			updated_at
+		) VALUES (?, ?, ?, ?)
+	`, tokenHash, `{`, `[]`, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	bootstrap, err := service.LoadBootstrap(tokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bootstrap != nil {
+		t.Fatalf("corrupt bootstrap was returned: %#v", bootstrap)
+	}
+
+	var count int
+	if err := service.db.QueryRow(
+		`SELECT COUNT(*) FROM startup_bootstrap WHERE token_hash = ?`,
+		tokenHash,
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("corrupt bootstrap was not removed")
+	}
+}
+
+func TestReplicaServiceRejectsInvalidBootstrap(t *testing.T) {
+	t.Parallel()
+
+	service := openTestReplica(t, filepath.Join(t.TempDir(), "replica.sqlite3"))
+	validHash := strings.Repeat("d", 64)
+	if err := service.PutBootstrap(
+		"raw-token",
+		`{"id":"user-1"}`,
+		`[]`,
+		1,
+	); err == nil {
+		t.Fatal("PutBootstrap accepted a raw token")
+	}
+	if err := service.PutBootstrap(
+		validHash,
+		`not-json`,
+		`[]`,
+		1,
+	); err == nil {
+		t.Fatal("PutBootstrap accepted invalid user JSON")
+	}
+	if _, err := service.LoadBootstrap("raw-token"); err == nil {
+		t.Fatal("LoadBootstrap accepted a raw token")
 	}
 }
 

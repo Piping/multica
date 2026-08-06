@@ -3,6 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
 import {
+  discoverReplicaScope,
+  discoverReplicaScopeFromEntries,
   isReplicableQuery,
   isReplicaQueryKey,
   restoreReplicaEntry,
@@ -45,8 +47,12 @@ export function ReplicaBoundary({
       .then(async (entries) => {
         if (cancelled || generationRef.current !== generation) return;
         const invalidHashes: string[] = [];
+        const replicaScope = discoverReplicaScopeFromEntries(
+          entries,
+          workspaceId,
+        );
         for (const entry of entries) {
-          const restored = restoreReplicaEntry(entry, workspaceId);
+          const restored = restoreReplicaEntry(entry, replicaScope);
           if (!restored) {
             invalidHashes.push(entry.queryHash);
             continue;
@@ -113,10 +119,30 @@ export function ReplicaBoundary({
       if (event.type !== "updated") return;
       const { query } = event;
       const { data, dataUpdatedAt, status } = query.state;
+      const replicaScope = discoverReplicaScope(
+        queryClient
+          .getQueryCache()
+          .getAll()
+          .flatMap((cachedQuery) =>
+            cachedQuery.state.data === undefined
+              ? []
+              : [
+                  {
+                    queryKey: cachedQuery.queryKey,
+                    data: cachedQuery.state.data,
+                  },
+                ],
+          ),
+        workspaceId,
+      );
       if (
         status !== "success" ||
         data === undefined ||
-        !isReplicableQuery(query.queryKey, data, workspaceId)
+        !isReplicableQuery(
+          query.queryKey,
+          data,
+          replicaScope,
+        )
       ) {
         return;
       }

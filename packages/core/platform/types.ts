@@ -4,6 +4,7 @@ import type {
   SupportedLocale,
 } from "../i18n";
 import type { StorageAdapter } from "../types/storage";
+import type { User, Workspace } from "../types";
 
 /** Identifies the calling client to the server. Threaded through to
  *  ApiClient and WSClient so all HTTP requests and WS connections from
@@ -15,6 +16,25 @@ export interface ClientIdentity {
   version?: string;
   /** Coarse operating-system bucket (for example "macos", "windows", or "linux"). */
   os?: string;
+}
+
+export interface AuthBootstrapSnapshot {
+  user: User;
+  workspaces: Workspace[];
+  updatedAt: number;
+}
+
+/**
+ * Optional host-owned startup cache for token-authenticated clients.
+ * Implementations must not persist the raw token.
+ */
+export interface AuthBootstrapAdapter {
+  load: (token: string) => Promise<AuthBootstrapSnapshot | null>;
+  save: (
+    token: string,
+    snapshot: Omit<AuthBootstrapSnapshot, "updatedAt">,
+  ) => Promise<void>;
+  remove: (token: string) => Promise<void>;
 }
 
 export interface CoreProviderProps {
@@ -31,6 +51,8 @@ export interface CoreProviderProps {
   onLogin?: () => void;
   /** Called after logout (e.g. clear cookie). */
   onLogout?: () => void;
+  /** Host-owned auth/workspace snapshot used to avoid blocking startup on remote I/O. */
+  authBootstrap?: AuthBootstrapAdapter;
   /** Identifies the calling client (web/desktop + version + os) to the server. */
   identity?: ClientIdentity;
   /** Active locale, determined server-side (web) or at app boot (desktop). */

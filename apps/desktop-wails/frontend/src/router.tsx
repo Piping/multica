@@ -129,7 +129,13 @@ function NativeWindowBridge() {
 
 export function AppRouter() {
   const context = window.desktopAPI.windowContext;
-  const initialPath = context.kind === "issue" ? context.path : paths.root();
+  const documentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const initialPath =
+    context.kind === "issue"
+      ? context.path
+      : window.location.pathname !== "/"
+        ? documentPath
+        : paths.root();
 
   return (
     <MemoryRouter initialEntries={[initialPath]}>

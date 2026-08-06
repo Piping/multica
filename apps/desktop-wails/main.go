@@ -4,7 +4,9 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -52,7 +54,7 @@ func main() {
 		Description: "Multica desktop client hosted by Go and Wails v3",
 		Services:    services,
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(distAssets),
+			Handler: newSPAAssetHandler(distAssets),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
@@ -84,6 +86,37 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stderr, "Multica Wails failed to start: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func newSPAAssetHandler(distAssets fs.FS) http.Handler {
+	assets := application.AssetFileServerFS(distAssets)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isSPADocumentRequest(r) {
+			clone := r.Clone(r.Context())
+			clonedURL := *r.URL
+			clonedURL.Path = "/"
+			clonedURL.RawPath = ""
+			clone.URL = &clonedURL
+			assets.ServeHTTP(w, clone)
+			return
+		}
+		assets.ServeHTTP(w, r)
+	})
+}
+
+func isSPADocumentRequest(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	cleanPath := path.Clean(r.URL.Path)
+	if cleanPath == "." || cleanPath == "/" || strings.HasPrefix(cleanPath, "/wails/") {
+		return false
+	}
+	if path.Ext(cleanPath) != "" {
+		return false
+	}
+	return r.Header.Get("Sec-Fetch-Dest") == "document" ||
+		strings.Contains(r.Header.Get("Accept"), "text/html")
 }
 
 func notificationsSupportedAtStartup() bool {

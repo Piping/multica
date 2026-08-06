@@ -9,6 +9,7 @@ export interface AuthStoreOptions {
   storage: StorageAdapter;
   onLogin?: () => void;
   onLogout?: () => void;
+  onTokenRemoved?: (token: string) => void;
   /** When true, rely on HttpOnly cookies instead of localStorage for auth tokens. */
   cookieAuth?: boolean;
 }
@@ -28,7 +29,14 @@ export interface AuthState {
 }
 
 export function createAuthStore(options: AuthStoreOptions) {
-  const { api, storage, onLogin, onLogout, cookieAuth } = options;
+  const {
+    api,
+    storage,
+    onLogin,
+    onLogout,
+    onTokenRemoved,
+    cookieAuth,
+  } = options;
 
   return create<AuthState>((set) => ({
     user: null,
@@ -118,6 +126,8 @@ export function createAuthStore(options: AuthStoreOptions) {
         // Clear server-side HttpOnly cookie.
         api.logout().catch(() => {});
       }
+      const token = storage.getItem("multica_token");
+      if (token) onTokenRemoved?.(token);
       storage.removeItem("multica_token");
       api.setToken(null);
       setCurrentWorkspace(null, null);

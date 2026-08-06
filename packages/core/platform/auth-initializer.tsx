@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getApi } from "../api";
+import { ApiError, getApi } from "../api";
 import { useAuthStore } from "../auth";
 import {
   captureSignupSource,
@@ -15,9 +15,9 @@ import { workspaceKeys } from "../workspace/queries";
 import { createLogger } from "../logger";
 import { defaultStorage } from "./storage";
 import { setCurrentWorkspace } from "./workspace-storage";
-import type { ClientIdentity } from "./types";
+import type { AuthBootstrapAdapter, ClientIdentity } from "./types";
 import type { StorageAdapter } from "../types/storage";
-import type { User } from "../types";
+import type { User, Workspace } from "../types";
 
 const logger = createLogger("auth");
 
@@ -28,6 +28,7 @@ export function AuthInitializer({
   storage = defaultStorage,
   cookieAuth,
   identity,
+  authBootstrap,
 }: {
   children: ReactNode;
   onLogin?: () => void;
@@ -35,8 +36,28 @@ export function AuthInitializer({
   storage?: StorageAdapter;
   cookieAuth?: boolean;
   identity?: ClientIdentity;
+  authBootstrap?: AuthBootstrapAdapter;
 }) {
   const qc = useQueryClient();
+  const bootstrapTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!authBootstrap || cookieAuth) return;
+
+    const unsubscribe = qc.getQueryCache().subscribe((event) => {
+      if (event.type !== "updated") return;
+      if (!queryKeysEqual(event.query.queryKey, workspaceKeys.list())) return;
+      const workspaces = event.query.state.data;
+      const user = useAuthStore.getState().user;
+      const token =
+        bootstrapTokenRef.current ?? storage.getItem("multica_token");
+      if (!token || !user || !isWorkspaceList(workspaces)) return;
+      void authBootstrap.save(token, { user, workspaces }).catch((error) => {
+        logger.warn("failed to persist auth bootstrap", error);
+      });
+    });
+    return unsubscribe;
+  }, [authBootstrap, cookieAuth, qc, storage]);
 
   useEffect(() => {
     const api = getApi();
@@ -125,23 +146,89 @@ export function AuthInitializer({
     }
 
     api.setToken(token);
+    bootstrapTokenRef.current = token;
 
-    Promise.all([api.getMe(), api.listWorkspaces()])
+    const calibrateRemote = () =>
+      Promise.all([api.getMe(), api.listWorkspaces()])
       .then(([user, wsList]) => {
         onAuthSuccess(user);
-        // Seed React Query cache so the URL-driven layout can resolve the
-        // slug without a second fetch.
         qc.setQueryData(workspaceKeys.list(), wsList);
+        void authBootstrap
+          ?.save(token, { user, workspaces: wsList })
+          .catch((error) => {
+            logger.warn("failed to persist calibrated auth bootstrap", error);
+          });
       })
       .catch((err) => {
         logger.error("auth init failed", err);
-        api.setToken(null);
-        setCurrentWorkspace(null, null);
-        storage.removeItem("multica_token");
-        onAuthFailure();
+        const tokenWasRejected =
+          (err instanceof ApiError && err.status === 401) ||
+          storage.getItem("multica_token") !== token;
+        if (tokenWasRejected) {
+          bootstrapTokenRef.current = null;
+          api.setToken(null);
+          setCurrentWorkspace(null, null);
+          storage.removeItem("multica_token");
+          void authBootstrap?.remove(token).catch((removeError) => {
+            logger.warn("failed to remove rejected auth bootstrap", removeError);
+          });
+          onAuthFailure();
+          return;
+        }
+        // A local snapshot remains usable through network failures and 5xx
+        // responses. Only finish loading without a user when no snapshot was
+        // available.
+        if (!useAuthStore.getState().user) onAuthFailure();
+      });
+
+    if (!authBootstrap) {
+      void calibrateRemote();
+      return;
+    }
+
+    void authBootstrap
+      .load(token)
+      .then((snapshot) => {
+        if (snapshot) {
+          qc.setQueryData(
+            workspaceKeys.list(),
+            snapshot.workspaces,
+            { updatedAt: snapshot.updatedAt },
+          );
+          onAuthSuccess(snapshot.user);
+        }
+      })
+      .catch((err) => {
+        logger.warn("auth bootstrap restore failed", err);
+      })
+      .finally(() => {
+        void calibrateRemote();
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return <>{children}</>;
+}
+
+function queryKeysEqual(
+  first: readonly unknown[],
+  second: readonly unknown[],
+): boolean {
+  return (
+    first.length === second.length &&
+    first.every((value, index) => value === second[index])
+  );
+}
+
+function isWorkspaceList(value: unknown): value is Workspace[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (workspace) =>
+        typeof workspace === "object" &&
+        workspace !== null &&
+        typeof (workspace as { id?: unknown }).id === "string" &&
+        typeof (workspace as { slug?: unknown }).slug === "string",
+    )
+  );
 }

@@ -6,6 +6,7 @@ import { useWelcomeStore } from "@multica/core/onboarding";
 import { ThemeProvider } from "@multica/ui/components/common/theme-provider";
 import { Toaster } from "@multica/ui/components/ui/sonner";
 import { RESOURCES } from "@multica/views/locales";
+import { wailsAuthBootstrap } from "./auth-bootstrap";
 import { createWailsLocaleAdapter } from "./locale";
 import { AppRouter } from "./router";
 
@@ -118,6 +119,7 @@ export function App() {
           locale={locale}
           resources={{ [locale]: RESOURCES[locale] }}
           localeAdapter={localeAdapter}
+          authBootstrap={wailsAuthBootstrap}
           onLogout={handleLogout}
         >
           <DaemonSessionBridge />
