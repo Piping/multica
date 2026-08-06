@@ -26,18 +26,16 @@ import { LogOut, Mail, Users } from "lucide-react";
  * because callback / login detected pending invitations on their email.
  *
  * Design:
- *  - This route is only reachable for un-onboarded users (the entry-point
- *    judgment in callback/login routes already-onboarded users straight
- *    into their workspace; new invites for those users surface in the
- *    sidebar's pending-invitations dropdown instead).
+ *  - Login and callback route un-onboarded users with pending invitations
+ *    here before onboarding. Already-onboarded users continue directly into
+ *    the workspace selected by the post-auth resolver.
  *  - The user picks zero or more invitations to accept. "Submit" then:
  *      • zero selected → continue to /onboarding
  *      • ≥1 selected → accept each, mark onboarding complete, navigate
  *        into the first accepted workspace.
  *  - Unselected invitations are intentionally left as `pending` in the DB.
- *    The user can later decline them from the sidebar; we don't auto-decline
- *    here because closing/refreshing this page should not be a destructive
- *    action.
+ *    Returning to this route allows them to be handled later; closing or
+ *    refreshing this page should not be a destructive action.
  */
 export function InvitationsPage() {
   const { t } = useT("invite");
@@ -67,7 +65,7 @@ export function InvitationsPage() {
     setError(null);
 
     // Zero selected: hand off to onboarding. Pending invites stay pending and
-    // can be picked up later from the sidebar.
+    // can be picked up later by returning to this route.
     if (selected.size === 0) {
       push(paths.onboarding());
       return;

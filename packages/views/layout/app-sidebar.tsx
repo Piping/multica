@@ -17,11 +17,8 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  ChevronDown,
   ChevronRight,
   LogOut,
-  Plus,
-  Check,
   SquarePen,
   X,
 } from "lucide-react";
@@ -49,24 +46,18 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { useAuthStore } from "@multica/core/auth";
-import { useCurrentWorkspace, useWorkspacePaths, paths } from "@multica/core/paths";
-import { workspaceListOptions, myInvitationListOptions, workspaceKeys } from "@multica/core/workspace/queries";
+import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { resolvePublicFileUrl } from "@multica/core/workspace/avatar-url";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { inboxUnreadSummaryOptions, hasOtherWorkspaceUnread, unreadWorkspaceIds } from "@multica/core/inbox/queries";
+import { useQuery } from "@tanstack/react-query";
 import { chatSessionsOptions } from "@multica/core/chat/queries";
 import { countUnreadChatMessages } from "@multica/core/chat/unread";
 import { useChatStore } from "@multica/core/chat";
-import { api, ApiError } from "@multica/core/api";
-import { useModalStore } from "@multica/core/modals";
-import { useConfigStore } from "@multica/core/config";
+import { ApiError } from "@multica/core/api";
 import { pinListOptions } from "@multica/core/pins/queries";
 import { useDeletePin, useReorderPins } from "@multica/core/pins/mutations";
 import { issueDetailOptions } from "@multica/core/issues/queries";
@@ -96,9 +87,6 @@ function isNavActive(pathname: string, href: string): boolean {
 // `useEffect`/`useMemo` that depends on the value, and can trigger infinite
 // re-render loops when the effect itself calls `setState`.
 const EMPTY_PINS: PinnedItem[] = [];
-const EMPTY_WORKSPACES: Awaited<ReturnType<typeof api.listWorkspaces>> = [];
-const EMPTY_INVITATIONS: Awaited<ReturnType<typeof api.listMyInvitations>> = [];
-const EMPTY_INBOX_SUMMARY: Awaited<ReturnType<typeof api.getInboxUnreadSummary>> = [];
 
 // Nav items reference WorkspacePaths method names so they can be resolved
 // against the current workspace slug at render time (see AppSidebar body).
@@ -333,7 +321,7 @@ function PinSkeleton() {
 interface AppSidebarProps {
   /** Rendered above SidebarHeader (e.g. desktop traffic light spacer) */
   topSlot?: React.ReactNode;
-  /** Rendered in the header between workspace switcher and new-issue button (e.g. search trigger) */
+  /** Rendered in the header between workspace identity and new-issue button (e.g. search trigger) */
   searchSlot?: React.ReactNode;
   /** Extra className for SidebarHeader */
   headerClassName?: string;
@@ -348,15 +336,12 @@ export function AppSidebar({
   headerStyle,
 }: AppSidebarProps = {}) {
   const { t } = useT("layout");
-  const { pathname, push } = useNavigation();
+  const { pathname } = useNavigation();
   const user = useAuthStore((s) => s.user);
   const userId = useAuthStore((s) => s.user?.id);
   const logout = useLogout();
   const workspace = useCurrentWorkspace();
   const p = useWorkspacePaths();
-  const { data: workspaces = EMPTY_WORKSPACES } = useQuery(workspaceListOptions());
-  const { data: myInvitations = EMPTY_INVITATIONS } = useQuery(myInvitationListOptions());
-  const workspaceCreationDisabled = useConfigStore((s) => s.workspaceCreationDisabled);
 
   const wsId = workspace?.id;
   // Chat tab unread badge: IM-style total of unread *messages* across chat
@@ -388,20 +373,6 @@ export function AppSidebar({
     () => countUnreadChatMessages(chatSessions, viewedChatSessionId),
     [chatSessions, viewedChatSessionId],
   );
-  // Cross-workspace unread summary backs the workspace-switcher dot. One
-  // shared cache entry across workspaces; gated on an active workspace since
-  // the endpoint resolves through the workspace-member middleware.
-  const { data: unreadSummary = EMPTY_INBOX_SUMMARY } = useQuery({
-    ...inboxUnreadSummaryOptions(),
-    enabled: !!wsId,
-  });
-  const otherWorkspaceUnread = React.useMemo(
-    () => hasOtherWorkspaceUnread(unreadSummary, wsId),
-    [unreadSummary, wsId],
-  );
-  // Which workspaces have unread, so the switcher dropdown can point at the
-  // specific one(s) rather than just the aggregate avatar dot.
-  const unreadWsIds = React.useMemo(() => unreadWorkspaceIds(unreadSummary), [unreadSummary]);
   const { data: pinnedItems = EMPTY_PINS } = useQuery({
     ...pinListOptions(wsId ?? "", userId ?? ""),
     enabled: !!wsId && !!userId,
@@ -452,173 +423,27 @@ export function AppSidebar({
     [localPinned, reorderPins],
   );
 
-  const queryClient = useQueryClient();
-  const acceptInvitationMut = useMutation({
-    mutationFn: (id: string) => api.acceptInvitation(id),
-    // After accepting an invitation, navigate INTO the newly-joined workspace.
-    // Otherwise the user stays on their current workspace and just sees the
-    // new one appear in the dropdown — silent and confusing (this is MUL-820).
-    onSuccess: async (_, invitationId) => {
-      const invitation = myInvitations.find((i) => i.id === invitationId);
-      queryClient.invalidateQueries({ queryKey: workspaceKeys.myInvitations() });
-      // staleTime: 0 forces a real network fetch — we need the joined workspace
-      // in the list before we can resolve its slug for navigation.
-      const list = await queryClient.fetchQuery({
-        ...workspaceListOptions(),
-        staleTime: 0,
-      });
-      const joined = invitation
-        ? list.find((w) => w.id === invitation.workspace_id)
-        : null;
-      if (joined) {
-        push(paths.workspace(joined.slug).issues());
-      }
-    },
-  });
-  const declineInvitationMut = useMutation({
-    mutationFn: (id: string) => api.declineInvitation(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: workspaceKeys.myInvitations() });
-    },
-  });
-
   const createIssueShortcut = useShortcut("createIssue");
 
   return (
       <Sidebar variant="inset">
         {topSlot}
-        {/* Workspace Switcher */}
         <SidebarHeader className={cn("py-3", headerClassName)} style={headerStyle}>
           <SidebarMenu>
             <SidebarMenuItem>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <SidebarMenuButton>
-                      <span className="relative">
-                        <WorkspaceAvatar name={workspace?.name ?? "M"} avatarUrl={workspace?.avatar_url} size="sm" />
-                        {/* Shared brand dot: a pending invitation OR another
-                            workspace with unread inbox items. The active
-                            workspace's own unread stays on the Inbox nav count
-                            (below), so it is deliberately excluded here. */}
-                        {(myInvitations.length > 0 || otherWorkspaceUnread) && (
-                          <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-brand ring-1 ring-sidebar" />
-                        )}
-                      </span>
-                      <span className="flex-1 truncate font-medium">
-                        {workspace?.name ?? "Multica"}
-                      </span>
-                      <ChevronDown className="size-3 text-muted-foreground" />
-                    </SidebarMenuButton>
-                  }
+              <div
+                data-sidebar="workspace-identity"
+                className="flex h-8 min-w-0 items-center gap-2 overflow-hidden px-2 text-body"
+              >
+                <WorkspaceAvatar
+                  name={workspace?.name ?? "M"}
+                  avatarUrl={workspace?.avatar_url}
+                  size="sm"
                 />
-                <DropdownMenuContent
-                  className="w-auto min-w-56"
-                  align="start"
-                  side="bottom"
-                  sideOffset={4}
-                >
-                  <div className="flex items-center gap-2.5 px-2 py-1.5">
-                    <ActorAvatar
-                      name={user?.name ?? ""}
-                      initials={(user?.name ?? "U").charAt(0).toUpperCase()}
-                      avatarUrl={resolvePublicFileUrl(user?.avatar_url)}
-                      size="lg"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-body font-medium leading-tight">
-                        {user?.name}
-                      </p>
-                      <p className="truncate text-caption text-muted-foreground leading-tight">
-                        {user?.email}
-                      </p>
-                    </div>
-                  </div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-caption text-muted-foreground">
-                      {t(($) => $.sidebar.workspaces_label)}
-                    </DropdownMenuLabel>
-                    {workspaces.map((ws) => (
-                      <DropdownMenuItem
-                        key={ws.id}
-                        render={
-                          <AppLink href={paths.workspace(ws.slug).issues()} />
-                        }
-                      >
-                        <WorkspaceAvatar name={ws.name} avatarUrl={ws.avatar_url} size="sm" />
-                        <span className="flex-1 truncate">{ws.name}</span>
-                        {/* Points at the specific workspace holding unread
-                            inbox items. Sits in the same right-edge slot as the
-                            active-workspace check; the active workspace is
-                            excluded (its unread is the Inbox nav count), so dot
-                            and check never collide on one row. */}
-                        {ws.id !== workspace?.id && unreadWsIds.has(ws.id) && (
-                          <span className="size-2 rounded-full bg-brand" />
-                        )}
-                        {ws.id === workspace?.id && (
-                          <Check className="h-3.5 w-3.5 text-primary" />
-                        )}
-                      </DropdownMenuItem>
-                    ))}
-                    {!workspaceCreationDisabled && (
-                      <DropdownMenuItem
-                        onClick={() =>
-                          useModalStore.getState().open("create-workspace")
-                        }
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        {t(($) => $.sidebar.create_workspace)}
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuGroup>
-                  {myInvitations.length > 0 && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel className="text-caption text-muted-foreground">
-                          {t(($) => $.sidebar.pending_invitations_label)}
-                        </DropdownMenuLabel>
-                        {myInvitations.map((inv) => (
-                          <div key={inv.id} className="flex items-center gap-2 px-2 py-1.5">
-                            <WorkspaceAvatar name={inv.workspace_name ?? "W"} size="sm" />
-                            <span className="flex-1 truncate text-body">{inv.workspace_name ?? t(($) => $.sidebar.invitation_workspace_fallback)}</span>
-                            <button
-                              type="button"
-                              className="text-caption px-2 py-0.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                              disabled={acceptInvitationMut.isPending}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                acceptInvitationMut.mutate(inv.id);
-                              }}
-                            >
-                              {t(($) => $.sidebar.invitation_join)}
-                            </button>
-                            <button
-                              type="button"
-                              className="text-caption px-2 py-0.5 rounded bg-muted text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
-                              disabled={declineInvitationMut.isPending}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                declineInvitationMut.mutate(inv.id);
-                              }}
-                            >
-                              {t(($) => $.sidebar.invitation_decline)}
-                            </button>
-                          </div>
-                        ))}
-                      </DropdownMenuGroup>
-                    </>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem variant="destructive" onClick={logout}>
-                      <LogOut className="h-3.5 w-3.5" />
-                      {t(($) => $.sidebar.log_out)}
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {workspace?.name ?? "Multica"}
+                </span>
+              </div>
             </SidebarMenuItem>
           </SidebarMenu>
           <SidebarMenu>
@@ -765,6 +590,45 @@ export function AppSidebar({
         </SidebarContent>
 
         <SidebarFooter className="p-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <SidebarMenuButton>
+                      <ActorAvatar
+                        name={user?.name ?? ""}
+                        initials={(user?.name ?? "U").charAt(0).toUpperCase()}
+                        avatarUrl={resolvePublicFileUrl(user?.avatar_url)}
+                        size="sm"
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        {user?.name ?? user?.email}
+                      </span>
+                    </SidebarMenuButton>
+                  }
+                />
+                <DropdownMenuContent
+                  className="w-auto min-w-56"
+                  align="start"
+                  side="top"
+                  sideOffset={4}
+                >
+                  <div className="px-2 py-1.5">
+                    <p className="truncate text-body font-medium">{user?.name}</p>
+                    <p className="truncate text-caption text-muted-foreground">
+                      {user?.email}
+                    </p>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={logout}>
+                    <LogOut className="size-3.5" />
+                    {t(($) => $.sidebar.log_out)}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
           {/* One utility strip: the Discord link takes the leading space the
               help trigger was leaving empty. `justify-end` keeps the trigger
               right-aligned once the Discord link is dismissed. */}
