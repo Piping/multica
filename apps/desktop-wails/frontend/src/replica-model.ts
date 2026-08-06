@@ -190,13 +190,50 @@ export function isReplicableQuery(
   }
 
   if (
+    queryKey[0] === "labels" &&
+    queryKey[1] === workspaceId &&
+    queryKey.length === 4 &&
+    queryKey[2] === "list" &&
+    typeof queryKey[3] === "string"
+  ) {
+    return isLabelCatalog(data, workspaceId, queryKey[3]);
+  }
+
+  if (
     queryKey[0] === "workspaces" &&
     queryKey[1] === workspaceId &&
     queryKey.length === 3
   ) {
-    if (queryKey[2] === "members" || queryKey[2] === "agents") {
+    if (
+      queryKey[2] === "members" ||
+      queryKey[2] === "agents" ||
+      queryKey[2] === "squads"
+    ) {
       return isWorkspaceRecordArray(data, workspaceId);
     }
+    if (queryKey[2] === "assignee-frequency") {
+      return isAssigneeFrequency(data);
+    }
+  }
+
+  if (
+    queryKey[0] === "quick-actions" &&
+    queryKey[1] === workspaceId &&
+    queryKey.length === 4 &&
+    queryKey[2] === "list" &&
+    typeof queryKey[3] === "boolean"
+  ) {
+    return isWorkspaceCollection(data, "quick_actions", workspaceId);
+  }
+
+  if (
+    queryKey[0] === "github" &&
+    queryKey[1] === "pull-requests" &&
+    queryKey.length === 3 &&
+    typeof queryKey[2] === "string" &&
+    issueIds.has(queryKey[2])
+  ) {
+    return isWorkspaceCollection(data, "pull_requests", workspaceId);
   }
 
   if (
@@ -279,10 +316,27 @@ export function isReplicaQueryKey(
       queryKey.length === 4 &&
       queryKey[2] === "issue" &&
       typeof queryKey[3] === "string") ||
+    (queryKey[0] === "labels" &&
+      queryKey[1] === workspaceId &&
+      queryKey.length === 4 &&
+      queryKey[2] === "list" &&
+      typeof queryKey[3] === "string") ||
     (queryKey[0] === "workspaces" &&
       queryKey[1] === workspaceId &&
       queryKey.length === 3 &&
-      (queryKey[2] === "members" || queryKey[2] === "agents")) ||
+      (queryKey[2] === "members" ||
+        queryKey[2] === "agents" ||
+        queryKey[2] === "squads" ||
+        queryKey[2] === "assignee-frequency")) ||
+    (queryKey[0] === "quick-actions" &&
+      queryKey[1] === workspaceId &&
+      queryKey.length === 4 &&
+      queryKey[2] === "list" &&
+      typeof queryKey[3] === "boolean") ||
+    (queryKey[0] === "github" &&
+      queryKey[1] === "pull-requests" &&
+      queryKey.length === 3 &&
+      typeof queryKey[2] === "string") ||
     (queryKey[0] === "projects" &&
       queryKey[1] === workspaceId &&
       ((queryKey.length === 3 && queryKey[2] === "list") ||
@@ -662,6 +716,38 @@ function isChildProgress(value: unknown): boolean {
 
 function isIssueLabels(value: unknown, workspaceId: string): boolean {
   return isWorkspaceCollection(value, "labels", workspaceId);
+}
+
+function isLabelCatalog(
+  value: unknown,
+  workspaceId: string,
+  resourceType: string,
+): boolean {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.labels) &&
+    value.labels.every(
+      (label) =>
+        isWorkspaceRecord(label, workspaceId) &&
+        (label.resource_type === undefined ||
+          label.resource_type === resourceType),
+    )
+  );
+}
+
+function isAssigneeFrequency(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isRecord(entry) &&
+        typeof entry.assignee_type === "string" &&
+        entry.assignee_type.length > 0 &&
+        typeof entry.assignee_id === "string" &&
+        entry.assignee_id.length > 0 &&
+        isNonNegativeInteger(entry.frequency),
+    )
+  );
 }
 
 function isWorkspaceCollection(

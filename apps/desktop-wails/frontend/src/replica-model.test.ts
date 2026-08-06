@@ -512,6 +512,148 @@ describe("isReplicableQuery", () => {
       ),
     ).toBe(true);
   });
+
+  it("accepts issue side panel workspace catalogs", () => {
+    expect(
+      isReplicableQuery(
+        ["workspaces", workspaceId, "squads"],
+        [
+          {
+            id: "squad-1",
+            workspace_id: workspaceId,
+            name: "Support",
+            leader_id: "agent-1",
+          },
+        ],
+        emptyScope,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicableQuery(
+        ["workspaces", workspaceId, "assignee-frequency"],
+        [
+          {
+            assignee_type: "agent",
+            assignee_id: "agent-1",
+            frequency: 3,
+          },
+        ],
+        emptyScope,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicableQuery(
+        ["labels", workspaceId, "list", "issue"],
+        {
+          labels: [
+            {
+              id: "label-1",
+              workspace_id: workspaceId,
+              resource_type: "issue",
+            },
+          ],
+          total: 1,
+        },
+        emptyScope,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicableQuery(
+        ["quick-actions", workspaceId, "list", false],
+        {
+          quick_actions: [
+            {
+              id: "quick-action-1",
+              workspace_id: workspaceId,
+              assignee_type: "agent",
+              assignee_id: "agent-1",
+            },
+          ],
+        },
+        emptyScope,
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects cross-workspace side panel catalogs", () => {
+    expect(
+      isReplicableQuery(
+        ["workspaces", workspaceId, "squads"],
+        [
+          {
+            id: "squad-1",
+            workspace_id: "workspace-2",
+            name: "Other",
+            leader_id: "agent-1",
+          },
+        ],
+        emptyScope,
+      ),
+    ).toBe(false);
+    expect(
+      isReplicableQuery(
+        ["labels", workspaceId, "list", "issue"],
+        {
+          labels: [
+            {
+              id: "label-1",
+              workspace_id: workspaceId,
+              resource_type: "agent",
+            },
+          ],
+        },
+        emptyScope,
+      ),
+    ).toBe(false);
+    expect(
+      isReplicableQuery(
+        ["quick-actions", workspaceId, "list", false],
+        {
+          quick_actions: [
+            {
+              id: "quick-action-1",
+              workspace_id: "workspace-2",
+              assignee_type: "agent",
+              assignee_id: "agent-1",
+            },
+          ],
+        },
+        emptyScope,
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts pull requests only for a trusted issue in this workspace", () => {
+    const key = ["github", "pull-requests", "issue-1"];
+    const data = {
+      pull_requests: [
+        {
+          id: "pull-request-1",
+          workspace_id: workspaceId,
+          repo_owner: "multica",
+          repo_name: "multica",
+          number: 42,
+        },
+      ],
+    };
+
+    expect(isReplicableQuery(key, data, issueScope)).toBe(true);
+    expect(isReplicableQuery(key, data, emptyScope)).toBe(false);
+    expect(
+      isReplicableQuery(
+        key,
+        {
+          pull_requests: [
+            {
+              ...data.pull_requests[0],
+              workspace_id: "workspace-2",
+            },
+          ],
+        },
+        issueScope,
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("discoverReplicaScope", () => {
@@ -632,6 +774,30 @@ describe("isReplicaQueryKey", () => {
     expect(
       isReplicaQueryKey(
         ["labels", workspaceId, "issue", "issue-1"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["workspaces", workspaceId, "assignee-frequency"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["labels", workspaceId, "list", "issue"],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["quick-actions", workspaceId, "list", false],
+        workspaceId,
+      ),
+    ).toBe(true);
+    expect(
+      isReplicaQueryKey(
+        ["github", "pull-requests", "issue-1"],
         workspaceId,
       ),
     ).toBe(true);
