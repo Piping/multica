@@ -217,11 +217,11 @@ func (c *Client) ClaimTask(ctx context.Context, runtimeID string) (*Task, error)
 // that one runtime's goroutine — the batch call covers every runtime the
 // daemon hosts in a single request, so a slow claim would delay ALL of them
 // (the head-of-line coupling the per-runtime pollers were split to avoid,
-// MUL-1744). Bounding the batch to a few seconds caps that worst-case
-// starvation; a claim that commits server-side after the client gives up is
-// recovered by ReclaimStaleDispatchedTasksForRuntimes on the next poll. Kept
-// comfortably above p99 claim latency so recovery stays the exception.
-const batchClaimRequestTimeout = 5 * time.Second
+// MUL-1744). Keep the budget below the 30s control-plane timeout, but long
+// enough for the claim's sequential queries when the server and database are
+// in different regions. A claim that commits server-side after the client gives
+// up is recovered by ReclaimStaleDispatchedTasksForRuntimes on the next poll.
+const batchClaimRequestTimeout = 15 * time.Second
 
 // ClaimTasks is the machine-level (MUL-4257) batch counterpart of ClaimTask:
 // it asks the server, in a single request, to claim up to maxTasks tasks across
