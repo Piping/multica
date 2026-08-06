@@ -1,0 +1,16 @@
+{
+  "extends": "@multica/tsconfig/react-library.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true,
+    "types": ["vite/client", "node"],
+    "paths": {
+      "@/*": ["frontend/src/*"]
+    }
+  },
+  "include": [
+    "frontend/**/*.ts",
+    "frontend/**/*.tsx",
+    "vite.config.ts"
+  ]
+}

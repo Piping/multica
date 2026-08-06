@@ -1,12 +1,53 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"testing"
 
+	"github.com/go-chi/cors"
 	"github.com/multica-ai/multica/server/internal/handler"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
+
+func TestCORSAllowsPackagedWailsDesktopOrigin(t *testing.T) {
+	t.Setenv("CORS_ALLOWED_ORIGINS", "https://multica.example")
+	origins := allowedOrigins()
+	for _, want := range []string{
+		"https://multica.example",
+		"wails://localhost",
+		"http://wails.localhost",
+	} {
+		if !slices.Contains(origins, want) {
+			t.Fatalf("%q missing from allowed origins: %v", want, origins)
+		}
+	}
+
+	middleware := cors.Handler(cors.Options{
+		AllowedOrigins:   origins,
+		AllowedMethods:   []string{"POST", "OPTIONS"},
+		AllowedHeaders:   corsAllowedHeaders,
+		AllowCredentials: true,
+	})
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodOptions, "/auth/send-code", nil)
+	request.Header.Set("Origin", "wails://localhost")
+	request.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	request.Header.Set("Access-Control-Request-Headers", "content-type,x-request-id,x-client-platform")
+	response := httptest.NewRecorder()
+
+	middleware(next).ServeHTTP(response, request)
+
+	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "wails://localhost" {
+		t.Fatalf("Access-Control-Allow-Origin = %q", got)
+	}
+	if got := response.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Fatalf("Access-Control-Allow-Credentials = %q", got)
+	}
+}
 
 // The app advertises its capabilities on the cancel request (#5219). Browsers
 // preflight a custom request header, so an entry missing from AllowedHeaders is

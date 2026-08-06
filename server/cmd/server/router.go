@@ -47,6 +47,15 @@ var defaultOrigins = []string{
 	"http://localhost:5174", // electron-vite dev (fallback port)
 }
 
+// Wails serves packaged renderer assets from fixed local origins. These are
+// application origins, not network listeners, and must remain allowed even
+// when a deployment replaces the browser defaults through
+// CORS_ALLOWED_ORIGINS.
+var wailsDesktopOrigins = []string{
+	"wails://localhost",      // macOS and Linux
+	"http://wails.localhost", // Windows
+}
+
 // corsAllowedHeaders must list every header the browser clients send. A header
 // missing here fails the preflight, so the request never reaches the handler at
 // all — the failure looks nothing like "the server ignored my header".
@@ -88,7 +97,7 @@ func allowedOrigins() []string {
 		raw = strings.TrimSpace(os.Getenv("FRONTEND_ORIGIN"))
 	}
 	if raw == "" {
-		return defaultOrigins
+		return appendOrigins(defaultOrigins, wailsDesktopOrigins...)
 	}
 
 	parts := strings.Split(raw, ",")
@@ -100,9 +109,26 @@ func allowedOrigins() []string {
 		}
 	}
 	if len(origins) == 0 {
-		return defaultOrigins
+		return appendOrigins(defaultOrigins, wailsDesktopOrigins...)
 	}
-	return origins
+	return appendOrigins(origins, wailsDesktopOrigins...)
+}
+
+func appendOrigins(origins []string, additional ...string) []string {
+	result := append([]string(nil), origins...)
+	for _, candidate := range additional {
+		found := false
+		for _, origin := range result {
+			if origin == candidate {
+				found = true
+				break
+			}
+		}
+		if !found {
+			result = append(result, candidate)
+		}
+	}
+	return result
 }
 
 // appURLFromEnv resolves the user-facing web app URL. It prefers

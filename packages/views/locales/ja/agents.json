@@ -69,6 +69,7 @@
     "you": "あなた",
     "archived": "アーカイブ済み",
     "needs_runtime": "ランタイム未設定",
+    "runtime_managed": "ランタイム",
     "no_description": "説明なし",
     "fallback_runtime_cloud": "クラウド",
     "fallback_runtime_local": "ローカル",

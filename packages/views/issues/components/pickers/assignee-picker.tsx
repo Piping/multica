@@ -250,8 +250,15 @@ function AssigneePickerImpl({
               >
                 <ActorAvatar actorType="agent" actorId={a.id} size="sm" showStatusDot />
                 <span className={`truncate ${allowed ? "" : "text-muted-foreground"}`}>{a.name}</span>
+                {a.runtime_managed && (
+                  <span className="ml-auto shrink-0 rounded bg-muted px-1 text-micro font-medium text-muted-foreground">
+                    {t(($) => $.pickers.assignee.runtime_managed)}
+                  </span>
+                )}
                 {a.visibility === "private" && (
-                  <Lock className="ml-auto h-3 w-3 text-muted-foreground" />
+                  <Lock
+                    className={`${a.runtime_managed ? "" : "ml-auto"} h-3 w-3 text-muted-foreground`}
+                  />
                 )}
               </PickerItem>
             );

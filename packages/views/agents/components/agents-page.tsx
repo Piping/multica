@@ -403,6 +403,11 @@ function NameCell({ row }: { row: AgentListRow }) {
               {t(($) => $.row.you)}
             </span>
           )}
+          {agent.runtime_managed && (
+            <span className="shrink-0 rounded bg-muted px-1 text-micro font-medium text-muted-foreground">
+              {t(($) => $.row.runtime_managed)}
+            </span>
+          )}
         </div>
         {agent.description ? (
           <div className="mt-0.5 truncate text-caption text-muted-foreground">
@@ -858,7 +863,12 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
         continue;
       }
       all++;
-      if (currentUser && a.owner_id === currentUser.id) mine++;
+      if (
+        a.runtime_managed ||
+        (currentUser && a.owner_id === currentUser.id)
+      ) {
+        mine++;
+      }
     }
     return { mine, all, archived };
   }, [agents, currentUser]);
@@ -871,7 +881,10 @@ export function AgentsPage(_props: AgentsPageProps = {}) {
       if (scope === "archived") return !!a.archived_at;
       if (a.archived_at) return false;
       if (scope === "mine") {
-        return !!currentUser && a.owner_id === currentUser.id;
+        return (
+          a.runtime_managed === true ||
+          (!!currentUser && a.owner_id === currentUser.id)
+        );
       }
       return true;
     });

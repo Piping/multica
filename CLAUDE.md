@@ -18,6 +18,7 @@ Multica is an AI-native task management platform for small teams, with agents as
 - `server/`: Go backend, Chi router, sqlc, gorilla/websocket.
 - `apps/web/`: Vite React SPA with React Router, Cloudflare Pages assets, and a same-origin routing Worker.
 - `apps/desktop/`: Electron desktop app.
+- `apps/desktop-wails/`: Go + Wails v3 desktop app with its own renderer shell.
 - `apps/mobile/`: Expo / React Native iOS app. Read `apps/mobile/CLAUDE.md` before touching it.
 - `apps/docs/`: Fumadocs documentation site.
 - `packages/core/`: headless business logic, API client, React Query hooks, Zustand stores.
@@ -55,6 +56,8 @@ These are hard constraints:
 - `packages/views/`: no `next/*`, no `react-router-dom`, no stores. Use `NavigationAdapter`, `useNavigation()`, and `<AppLink>`.
 - `apps/web/platform/`: browser navigation and Web platform adapter boundary.
 - `apps/desktop/src/renderer/src/platform/`: only place for `react-router-dom` navigation wiring.
+- `apps/desktop-wails/`: must not import from `apps/desktop/`; Wails and Electron are independent host and renderer containers and share frontend code only through `packages/`.
+- `apps/desktop-wails/`: keep the main sidebar expanded. Its top-left region reserves native macOS window controls, so this host must not expose sidebar collapse controls or shortcuts.
 - Every workspace under `apps/` and `packages/` must declare directly imported external packages in its own `package.json`.
 - Shared dependencies use `catalog:` from `pnpm-workspace.yaml`; `apps/mobile/` pins Expo/React Native related versions directly.
 

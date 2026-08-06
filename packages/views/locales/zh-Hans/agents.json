@@ -77,6 +77,7 @@
     "you": "你",
     "archived": "已归档",
     "needs_runtime": "需绑定运行时",
+    "runtime_managed": "运行时",
     "no_description": "暂无描述",
     "fallback_runtime_cloud": "云端",
     "fallback_runtime_local": "本地",

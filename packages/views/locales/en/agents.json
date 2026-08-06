@@ -78,6 +78,7 @@
     "you": "You",
     "archived": "Archived",
     "needs_runtime": "Needs a runtime",
+    "runtime_managed": "Runtime",
     "no_description": "No description",
     "fallback_runtime_cloud": "Cloud",
     "fallback_runtime_local": "Local",

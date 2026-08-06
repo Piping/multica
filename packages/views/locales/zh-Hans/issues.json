@@ -576,6 +576,7 @@
       "members_group": "成员",
       "agents_group": "智能体",
       "squads_group": "小队",
+      "runtime_managed": "运行时",
       "agent_runtime_required": "请先为该智能体绑定运行时，再分配工作",
       "squad_runtime_required": "请先为该小队的负责人绑定运行时，再分配工作"
     },

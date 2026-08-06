@@ -145,4 +145,21 @@ describe("left sidebar resizing", () => {
     expect(wrapper).not.toHaveAttribute("data-sidebar-resizing");
     expect(document.documentElement).not.toHaveAttribute("data-sidebar-resizing");
   });
+
+  it("keeps resizing available without allowing rail clicks to collapse", () => {
+    const { container } = renderWithI18n(
+      <SidebarProvider open toggleEnabled={false}>
+        <Sidebar>
+          <SidebarRail />
+        </Sidebar>
+      </SidebarProvider>,
+    );
+
+    const sidebar = container.querySelector<HTMLElement>("[data-slot='sidebar']")!;
+    const rail = container.querySelector<HTMLButtonElement>("[data-slot='sidebar-rail']")!;
+
+    expect(rail).toHaveAccessibleName("Resize Sidebar");
+    fireEvent.click(rail);
+    expect(sidebar).toHaveAttribute("data-state", "expanded");
+  });
 });

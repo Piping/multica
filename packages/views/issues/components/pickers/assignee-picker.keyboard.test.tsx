@@ -20,9 +20,21 @@ const MEMBERS = [
   { user_id: "user-2", name: "Grace Hopper", role: "member" },
 ];
 
+const AGENTS = [
+  {
+    id: "runtime-agent-1",
+    name: "Codex Runtime",
+    archived_at: null,
+    runtime_id: "runtime-1",
+    runtime_managed: true,
+    visibility: "workspace",
+  },
+];
+
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => {
     if (queryKey[0] === "members") return { data: MEMBERS };
+    if (queryKey[0] === "agents") return { data: AGENTS };
     return { data: [] };
   },
 }));
@@ -89,5 +101,20 @@ describe("AssigneePicker search keyboard defaults", () => {
     await user.keyboard("{Enter}");
 
     expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("shows and assigns a runtime-managed vanilla agent", async () => {
+    const user = userEvent.setup();
+    const onUpdate = vi.fn();
+
+    renderPicker(onUpdate);
+
+    expect(screen.getByText("Runtime")).toBeInTheDocument();
+    await user.click(screen.getByText("Codex Runtime"));
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      assignee_type: "agent",
+      assignee_id: "runtime-agent-1",
+    });
   });
 });

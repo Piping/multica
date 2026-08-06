@@ -43,7 +43,11 @@ export function shouldIgnoreGlobalShortcutEvent(event: KeyboardEvent): boolean {
 }
 
 /** Executes configurable product-level shortcuts inside the dashboard shell. */
-export function GlobalShortcuts() {
+export function GlobalShortcuts({
+  sidebarToggleEnabled = true,
+}: {
+  sidebarToggleEnabled?: boolean;
+}) {
   const { toggleSidebar } = useSidebar();
   const navigation = useNavigation();
   const workspacePaths = useWorkspacePaths();
@@ -89,6 +93,7 @@ export function GlobalShortcuts() {
         if (!action.allowInEditable && isEditableShortcutTarget(event.target)) {
           return false;
         }
+        if (candidate === "toggleSidebar" && !sidebarToggleEnabled) return false;
         if (candidate === "toggleChat" && !canToggleFloatingChat()) return false;
         return shortcutMatchesEvent(getShortcut(candidate), event);
       });
@@ -127,7 +132,13 @@ export function GlobalShortcuts() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [navigation, overrides, toggleSidebar, workspacePaths]);
+  }, [
+    navigation,
+    overrides,
+    sidebarToggleEnabled,
+    toggleSidebar,
+    workspacePaths,
+  ]);
 
   return null;
 }

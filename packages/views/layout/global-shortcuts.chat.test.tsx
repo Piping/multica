@@ -61,6 +61,17 @@ function pressToggleChat(target: EventTarget = document): boolean {
   return event.defaultPrevented;
 }
 
+function pressToggleSidebar(): boolean {
+  const event = new KeyboardEvent("keydown", {
+    key: "b",
+    metaKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  document.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
 beforeEach(() => {
   // Pin the platform: jsdom's user agent reports the host OS, so Command vs
   // Control would otherwise depend on where the suite runs.
@@ -125,15 +136,15 @@ describe("chat toggle shortcut", () => {
   it("does not confuse the chat chord with the other global bindings", () => {
     render(<GlobalShortcuts />);
 
-    document.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        key: "b",
-        metaKey: true,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
+    expect(pressToggleSidebar()).toBe(true);
     expect(h.toggleSidebar).toHaveBeenCalledTimes(1);
     expect(h.chat.toggle).not.toHaveBeenCalled();
+  });
+
+  it("leaves the sidebar chord alone when the host disables collapsing", () => {
+    render(<GlobalShortcuts sidebarToggleEnabled={false} />);
+
+    expect(pressToggleSidebar()).toBe(false);
+    expect(h.toggleSidebar).not.toHaveBeenCalled();
   });
 });

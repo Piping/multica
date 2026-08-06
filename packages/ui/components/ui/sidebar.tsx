@@ -47,6 +47,7 @@ type SidebarContextProps = {
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
+  toggleEnabled: boolean
   toggleSidebar: () => void
 }
 
@@ -85,6 +86,7 @@ function SidebarProvider({
   defaultOpen = true,
   open: openProp,
   onOpenChange: setOpenProp,
+  toggleEnabled = true,
   className,
   style,
   children,
@@ -93,6 +95,7 @@ function SidebarProvider({
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  toggleEnabled?: boolean
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
@@ -134,8 +137,9 @@ function SidebarProvider({
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
+    if (!toggleEnabled) return
     return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
-  }, [isMobile, setOpen, setOpenMobile])
+  }, [isMobile, setOpen, setOpenMobile, toggleEnabled])
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
@@ -149,9 +153,10 @@ function SidebarProvider({
       isMobile,
       openMobile,
       setOpenMobile,
+      toggleEnabled,
       toggleSidebar,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleEnabled, toggleSidebar]
   )
   const resizeContextValue = React.useMemo<SidebarResizeContextProps>(
     () => ({
@@ -293,8 +298,10 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { toggleEnabled, toggleSidebar } = useSidebar()
   const { t } = useTranslation("ui")
+
+  if (!toggleEnabled) return null
 
   return (
     <Button
@@ -316,10 +323,12 @@ function SidebarTrigger({
 }
 
 function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
-  const { toggleSidebar } = useSidebar()
+  const { toggleEnabled, toggleSidebar } = useSidebar()
   const { commitWidth } = useSidebarResize()
   const { t } = useTranslation("ui")
-  const toggleLabel = t(($) => $.toggle_sidebar)
+  const railLabel = toggleEnabled
+    ? t(($) => $.toggle_sidebar)
+    : t(($) => $.resize_sidebar)
   const didDragRef = React.useRef(false)
   const dragRef = React.useRef<{
     pointerId: number
@@ -440,19 +449,19 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   )
 
   const handleClick = React.useCallback(() => {
-    if (!didDragRef.current) toggleSidebar()
-  }, [toggleSidebar])
+    if (toggleEnabled && !didDragRef.current) toggleSidebar()
+  }, [toggleEnabled, toggleSidebar])
 
   return (
     <button
       type="button"
       data-sidebar="rail"
       data-slot="sidebar-rail"
-      aria-label={toggleLabel}
+      aria-label={railLabel}
       tabIndex={-1}
       onClick={handleClick}
       onPointerDown={onPointerDown}
-      title={toggleLabel}
+      title={railLabel}
       className={cn(
         "absolute inset-y-0 z-20 hidden w-4 touch-none cursor-ew-resize transition-[transform,background-color] ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
         "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar",

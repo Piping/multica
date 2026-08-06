@@ -18,6 +18,7 @@ declare global {
   interface I18nResources {
     ui: {
       attach_file: string;
+      resize_sidebar: string;
       toggle_sidebar: string;
       pagination_previous: string;
       pagination_next: string;

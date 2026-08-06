@@ -74,7 +74,9 @@ export function AgentBatchToolbar({
   }, []);
 
   const allManageable = rows.every((r) => r.canManage);
-  const ownedRows = rows.filter((r) => r.isOwnedByMe);
+  const ownedRows = rows.filter(
+    (r) => r.isOwnedByMe && !r.agent.runtime_managed,
+  );
   const anyOwned = ownedRows.length > 0;
   const anyActive = rows.some((r) => !r.agent.archived_at);
   const anyArchived = rows.some((r) => !!r.agent.archived_at);

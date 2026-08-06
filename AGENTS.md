@@ -17,6 +17,7 @@ Go backend + monorepo frontend (pnpm workspaces + Turborepo) with shared package
 - `server/` - Go backend (Chi router, sqlc, gorilla/websocket)
 - `apps/web/` - Vite React SPA (React Router)
 - `apps/desktop/` - Electron desktop app
+- `apps/desktop-wails/` - Go + Wails v3 desktop app; owns its renderer shell and reuses only shared frontend packages
 - `apps/mobile/` - Expo / React Native iOS app (read `apps/mobile/CLAUDE.md` first)
 - `apps/docs/` - Fumadocs documentation site
 - `packages/core/` - Headless business logic (Zustand stores, React Query hooks, API client)
@@ -38,6 +39,8 @@ Go backend + monorepo frontend (pnpm workspaces + Turborepo) with shared package
 - `packages/ui/` - zero `@multica/core` imports
 - `packages/views/` - zero `next/*`, zero `react-router-dom`, use `NavigationAdapter` for routing
 - `apps/web/platform/` - Web browser and routing adapter boundary
+- `apps/desktop-wails/` - must not import from `apps/desktop/`; Wails and Electron are independent host/rendering containers
+- `apps/desktop-wails/` keeps the main sidebar expanded because its top-left area also owns native macOS window controls; do not expose sidebar collapse controls or shortcuts in this host
 
 ### Database Migrations (hard rules)
 
@@ -58,6 +61,7 @@ make check            # Full verification pipeline
 
 - After completing deployable changes, deploy the affected production service and verify its public endpoint before reporting completion, unless the user explicitly asks not to deploy or the required credentials/environment are unavailable.
 - Build the Vite production bundle locally or in CI. Deployment hosts only receive and serve the built `apps/web/dist` artifact; never run frontend compilation on a deployment host.
+- Build `apps/desktop-wails` frontend locally before its Go binary (`pnpm --filter @multica/desktop-wails build:frontend`, then `pnpm --filter @multica/desktop-wails build:go`); do not compile its renderer on a remote host.
 - For the `ten` bare-metal release/update procedure, use `docs/bare-metal-remote-deployment.zh-CN.md`.
 
 See CLAUDE.md for the authoritative rules and common commands.

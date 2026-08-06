@@ -77,6 +77,7 @@
     "you": "나",
     "archived": "보관됨",
     "needs_runtime": "런타임 필요",
+    "runtime_managed": "런타임",
     "no_description": "설명 없음",
     "fallback_runtime_cloud": "클라우드",
     "fallback_runtime_local": "로컬",

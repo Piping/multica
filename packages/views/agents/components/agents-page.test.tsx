@@ -335,3 +335,31 @@ describe("AgentsPage listReady gate", () => {
     expect(screen.queryByTestId("skeleton")).not.toBeInTheDocument();
   });
 });
+
+describe("AgentsPage runtime-managed agents", () => {
+  it("shows visible runtime agents in the default Mine scope", () => {
+    mocks.viewState.scope = "mine";
+    mocks.viewState.sortField = "name";
+    mocks.agents = [
+      makeAgent({
+        id: "runtime-agent",
+        name: "Codex Runtime",
+        owner_id: "another-user",
+        runtime_managed: true,
+      }),
+      makeAgent({
+        id: "other-agent",
+        name: "Another User Agent",
+        owner_id: "another-user",
+      }),
+    ];
+
+    renderPage();
+
+    expect(screen.getByText("Codex Runtime")).toBeInTheDocument();
+    expect(
+      screen.getByText("Runtime", { selector: "span" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Another User Agent")).not.toBeInTheDocument();
+  });
+});

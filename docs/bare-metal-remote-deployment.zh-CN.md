@@ -83,7 +83,7 @@ PORT=18080
 FRONTEND_ORIGIN=https://multica.diff.host
 MULTICA_APP_URL=https://multica.diff.host
 MULTICA_PUBLIC_URL=https://multica.diff.host
-CORS_ALLOWED_ORIGINS=https://multica.diff.host
+CORS_ALLOWED_ORIGINS=https://multica.diff.host,wails://localhost,http://wails.localhost
 COOKIE_DOMAIN=
 
 LOCAL_UPLOAD_DIR=/data00/multica/shared/data/uploads
@@ -92,6 +92,12 @@ LOCAL_UPLOAD_BASE_URL=https://multica.diff.host
 ALLOW_SIGNUP=false
 MULTICA_DEV_VERIFICATION_CODE=
 ```
+
+`wails://localhost` 是 macOS/Linux Wails v3 renderer 的固定 origin，
+`http://wails.localhost` 是 Windows 的固定 origin。它们只代表本机打包资源，
+不是可被远程访问的 HTTP 服务。后端也会把这两个 origin 固定追加到 CORS 和
+WebSocket 白名单，避免部署时只配置 Web 域名导致 Desktop 登录显示
+`Load failed`。
 
 ```bash
 ssh ten '

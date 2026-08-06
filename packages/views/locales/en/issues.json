@@ -601,6 +601,7 @@
       "members_group": "Members",
       "agents_group": "Agents",
       "squads_group": "Squads",
+      "runtime_managed": "Runtime",
       "agent_runtime_required": "Bind a runtime before assigning work to this agent",
       "squad_runtime_required": "Bind a runtime to this squad's leader before assigning work"
     },
